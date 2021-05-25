@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 type WireguardClient struct {
@@ -26,7 +27,22 @@ type WireguardClient struct {
 	ICMPMessage   string
 }
 
+var (
+	listenHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", `demo.wireguard.com`)).String()
+	listenProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", `udp`)).String()
+	listenPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", 12913)).Int()
+
+	serverPub  = kingpin.Flag("server-pub", "Wireguard Server Public Key").Default(fmt.Sprintf("%s", `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`)).String()
+	clientPub  = kingpin.Flag("client-pub", "Wireguard Client Public Key").Default(fmt.Sprintf("%s", `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`)).String()
+	clientPriv = kingpin.Flag("client-priv", "Wireguard Client Private Key").Default(fmt.Sprintf("%s", `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`)).String()
+	preShared  = kingpin.Flag("pre-shared", "Wireguard Pre Shared Key").Default(fmt.Sprintf("%s", `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`)).String()
+)
+
 func main() {
+	kingpin.HelpFlag.Short('h')
+	kingpin.CommandLine.DefaultEnvars()
+	kingpin.Parse()
+
 	wgc := WireguardClient{
 		Host:          `demo.wireguard.com`,
 		Port:          12913,

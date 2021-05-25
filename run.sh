@@ -1,1 +1,1 @@
-go run -v .
+go run -v . $@
