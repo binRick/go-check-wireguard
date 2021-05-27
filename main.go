@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/flynn/noise"
+	"github.com/k0kubun/pp"
+	"github.com/olorin/nagiosplugin"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
@@ -18,24 +20,62 @@ import (
 
 type WireguardClient struct {
 	Host          string
+	HostAddress   net.IP
 	Port          int
 	ClientPub     string
 	Proto         string
 	ClientPrivate string
 	ServerPub     string
 	PreShared     string
-	ICMPMessage   string
+
+	IcmpMessage    string
+	IcmpTTL        int
+	IcmpSequenceID int
+	IcmpID         int
+
+	ClientAddress net.IP
+	ServerAddress net.IP
 }
 
-var (
-	listenHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", `demo.wireguard.com`)).String()
-	listenProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", `udp`)).String()
-	listenPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", 12913)).Int()
+const (
+	DEFAULT_SERVER_PUB_KEY    = `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`
+	DEFAULT_CLIENT_PUB_KEY    = `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`
+	DEFAULT_PRESHARED_KEY     = `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`
+	DEFAULT_CLIENT_PRIV_KEY   = `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`
+	DEFAULT_WG_HOST           = `demo.wireguard.com`
+	DEFAULT_WG_PORT           = 12913
+	DEFAULT_WG_PROTO          = `udp`
+	DEFAULT_ICMP_MESSAGE      = `WireGuard1`
+	DEFAULT_WG_CLIENT_ADDRESS = `10.189.129.2`
+	DEFAULT_WG_SERVER_ADDRESS = `10.189.129.1`
+	DEFAULT_WG_CLIENT_NETMASK = 29
+	DEFAULT_ICMP_TTL          = 20
+	DEFAULT_ICMP_SEQUENCE_ID  = 438
+	DEFAULT_ICMP_ID           = 921
+)
 
-	serverPub  = kingpin.Flag("server-pub", "Wireguard Server Public Key").Default(fmt.Sprintf("%s", `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`)).String()
-	clientPub  = kingpin.Flag("client-pub", "Wireguard Client Public Key").Default(fmt.Sprintf("%s", `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`)).String()
-	clientPriv = kingpin.Flag("client-priv", "Wireguard Client Private Key").Default(fmt.Sprintf("%s", `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`)).String()
-	preShared  = kingpin.Flag("pre-shared", "Wireguard Pre Shared Key").Default(fmt.Sprintf("%s", `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`)).String()
+var (
+	nag = nagiosplugin.NewCheck()
+)
+
+var (
+	wgHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).String()
+	wgPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Int()
+	wgProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
+
+	icmpMessage    = kingpin.Flag("icmp-message", "ICMP Packet Message").Default(fmt.Sprintf("%s", DEFAULT_ICMP_MESSAGE)).String()
+	icmpTTL        = kingpin.Flag("icmp-ttl", "ICMP Packet TTL").Default(fmt.Sprintf("%d", DEFAULT_ICMP_TTL)).Int()
+	icmpSequenceID = kingpin.Flag("icmp-seq", "ICMP Packet TCP Sequence ID").Default(fmt.Sprintf("%d", DEFAULT_ICMP_SEQUENCE_ID)).Int()
+	icmpID         = kingpin.Flag("icmp-id", "ICMP Packet TCP ID").Default(fmt.Sprintf("%d", DEFAULT_ICMP_ID)).Int()
+
+	wgClientAddress = kingpin.Flag("client-address", "Wireguard Client Address").Default(fmt.Sprintf("%s", DEFAULT_WG_CLIENT_ADDRESS)).IP()
+	wgServerAddress = kingpin.Flag("server-address", "Wireguard Client Address").Default(fmt.Sprintf("%s", DEFAULT_WG_SERVER_ADDRESS)).IP()
+	wgClientNetmask = kingpin.Flag("client-netmask", "Wireguard Client Address").Default(fmt.Sprintf("%d", DEFAULT_WG_CLIENT_NETMASK)).Int()
+
+	serverPub  = kingpin.Flag("server-pub", "Wireguard Server Public Key").Default(fmt.Sprintf("%s", DEFAULT_SERVER_PUB_KEY)).String()
+	clientPub  = kingpin.Flag("client-pub", "Wireguard Client Public Key").Default(fmt.Sprintf("%s", DEFAULT_CLIENT_PUB_KEY)).String()
+	clientPriv = kingpin.Flag("client-priv", "Wireguard Client Private Key").Default(fmt.Sprintf("%s", DEFAULT_CLIENT_PRIV_KEY)).String()
+	preShared  = kingpin.Flag("pre-shared", "Wireguard Pre Shared Key").Default(fmt.Sprintf("%s", DEFAULT_PRESHARED_KEY)).String()
 )
 
 func main() {
@@ -43,16 +83,41 @@ func main() {
 	kingpin.CommandLine.DefaultEnvars()
 	kingpin.Parse()
 
-	wgc := WireguardClient{
-		Host:          `demo.wireguard.com`,
-		Port:          12913,
-		ClientPub:     `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`,
-		Proto:         `udp`,
-		ClientPrivate: `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`,
-		ServerPub:     `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`,
-		PreShared:     `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`,
-		ICMPMessage:   `WireGuard1`,
+	defer nag.Finish()
+
+	hostAddress := ``
+	lookup_records_qty := 0
+	parsed_host := net.ParseIP(*wgHost)
+	lookup_started := time.Now()
+	if parsed_host == nil {
+		a_rec, err := net.LookupHost(*wgHost)
+		if err != nil || len(a_rec) < 1 {
+			log.Fatalf(`lookup err: %s`, err)
+		}
+		hostAddress = a_rec[0]
+		lookup_records_qty = len(a_rec)
+	} else {
+		hostAddress = *wgHost
 	}
+	lookup_dur := time.Since(lookup_started)
+
+	wgc := WireguardClient{
+		Host:           *wgHost,
+		HostAddress:    net.ParseIP(hostAddress),
+		Port:           *wgPort,
+		ClientPub:      *clientPub,
+		Proto:          *wgProto,
+		ClientPrivate:  *clientPriv,
+		ServerPub:      *serverPub,
+		PreShared:      *preShared,
+		IcmpMessage:    *icmpMessage,
+		IcmpTTL:        *icmpTTL,
+		IcmpID:         *icmpID,
+		IcmpSequenceID: *icmpSequenceID,
+		ClientAddress:  *wgClientAddress,
+		ServerAddress:  *wgServerAddress,
+	}
+	pp.Print(wgc)
 	started := time.Now()
 	ourPrivate, _ := base64.StdEncoding.DecodeString("WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=")
 	ourPublic, _ := base64.StdEncoding.DecodeString("K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=")
@@ -70,7 +135,9 @@ func main() {
 		StaticKeypair:         noise.DHKey{Private: ourPrivate, Public: ourPublic},
 		PeerStatic:            theirPublic,
 	})
-	conn, err := net.Dial(wgc.Proto, fmt.Sprintf("%s:%d", wgc.Host, wgc.Port))
+	dial_started := time.Now()
+	conn, err := net.Dial(wgc.Proto, fmt.Sprintf("%s:%d", wgc.HostAddress, wgc.Port))
+	dial_dur := time.Since(dial_started)
 	if err != nil {
 		log.Fatalf("error dialing udp socket: %s", err)
 	}
@@ -101,14 +168,16 @@ func main() {
 
 	// read handshake response packet
 	responsePacket := make([]byte, 92)
+	res_started := time.Now()
 	n, err := conn.Read(responsePacket)
+	hs_dur := time.Since(res_started)
 	if err != nil {
 		log.Fatalf("error reading response packet: %s", err)
 	}
 	if n != len(responsePacket) {
 		log.Fatalf("response packet too short: want %d, got %d", len(responsePacket), n)
 	}
-	fmt.Printf("Read %d byte response packet in %dms\n", len(responsePacket), time.Since(started).Milliseconds())
+	//	fmt.Printf("Read %d byte response packet in %dms\n", len(responsePacket), time.Since(started).Milliseconds())
 	if responsePacket[0] != 2 { // Type: Response
 		log.Fatalf("response packet type wrong: want %d, got %d", 2, responsePacket[0])
 	}
@@ -132,9 +201,9 @@ func main() {
 	pingMessage, _ := (&icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Body: &icmp.Echo{
-			ID:   921,
-			Seq:  438,
-			Data: []byte(wgc.ICMPMessage),
+			ID:   int(wgc.IcmpID),
+			Seq:  int(wgc.IcmpSequenceID),
+			Data: []byte(wgc.IcmpMessage),
 		},
 	}).Marshal(nil)
 	pingHeader, err := (&ipv4.Header{
@@ -142,9 +211,9 @@ func main() {
 		Len:      ipv4.HeaderLen,
 		TotalLen: ipv4.HeaderLen + len(pingMessage),
 		Protocol: 1, // ICMP
-		TTL:      20,
-		Src:      net.IPv4(10, 189, 129, 2),
-		Dst:      net.IPv4(10, 189, 129, 1),
+		TTL:      int(wgc.IcmpTTL),
+		Src:      wgc.ClientAddress,
+		Dst:      wgc.ServerAddress,
 	}).Marshal()
 	binary.BigEndian.PutUint16(pingHeader[2:], uint16(ipv4.HeaderLen+len(pingMessage))) // fix the length endianness on BSDs
 	pingData := append(append(pingHeader, pingMessage...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -160,11 +229,13 @@ func main() {
 	if _, err := conn.Write(pingPacket); err != nil {
 		log.Fatalf("error writing ping message: %s", err)
 	}
-	fmt.Printf("Wrote %d byte ICMP packet in %dms\n", len(pingPacket), time.Since(started).Milliseconds())
+	//	fmt.Printf("Wrote %d byte ICMP packet in %dms\n", len(pingPacket), time.Since(started).Milliseconds())
 
 	// read ICMP Echo Reply packet
 	replyPacket := make([]byte, 80)
+	icmp_started := time.Now()
 	n, err = conn.Read(replyPacket)
+	icmp_dur := time.Since(icmp_started)
 	if err != nil {
 		log.Fatalf("error reading ping reply message: %s", err)
 	}
@@ -190,23 +261,32 @@ func main() {
 		log.Fatalf("unexpected reply body type %T", replyMessage.Body)
 	}
 
-	if echo.ID != 921 || echo.Seq != 438 || string(echo.Data) != wgc.ICMPMessage {
+	if echo.ID != wgc.IcmpID || echo.Seq != wgc.IcmpSequenceID || string(echo.Data) != wgc.IcmpMessage {
 		log.Fatalf("incorrect echo response: %#v", echo)
 	}
-	fmt.Printf("Read %d byte ICMP packet in %dms\n", len(string(echo.Data)), time.Since(started).Milliseconds())
+	//fmt.Printf("Read %d byte ICMP packet in %dms\n", len(string(echo.Data)), time.Since(started).Milliseconds())
+	ended := time.Now()
 
-	keepalivePacket := make([]byte, 16)
-	keepalivePacket[0] = 4                                             // Type: Data
-	keepalivePacket[1] = 0                                             // Reserved
-	keepalivePacket[2] = 0                                             // Reserved
-	keepalivePacket[3] = 0                                             // Reserved
-	binary.LittleEndian.PutUint32(keepalivePacket[4:], theirIndex)     // Their index
-	binary.LittleEndian.PutUint64(keepalivePacket[8:], 1)              // Nonce
-	keepalivePacket, _ = sendCipher.Encrypt(keepalivePacket, nil, nil) // Empty data means keepalive
-	if _, err := conn.Write(keepalivePacket); err != nil {
-		log.Fatalf("error writing keepalive message: %s", err)
-	}
-	fmt.Printf("OK- Validated Wireguard Server %s://%s:%d in %dms\n", wgc.Proto, wgc.Host, wgc.Port, time.Since(started).Milliseconds())
+	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(started).Milliseconds()))
+	nag.AddPerfDatum("dial_duration", "ms", float64(dial_dur.Milliseconds()))
+	nag.AddPerfDatum("icmp_duration", "ms", float64(icmp_dur.Milliseconds()))
+	nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
+	nag.AddPerfDatum("handshake_duration", "ms", float64(hs_dur.Milliseconds()))
+
+	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
+	nag.AddPerfDatum("icmp_seq_id", "", float64(wgc.IcmpSequenceID))
+
+	nag.AddPerfDatum("wg_port", "", float64(wgc.Port))
+	nag.AddPerfDatum("wg_client_netmask", "", float64(*wgClientNetmask))
+
+	nag.AddPerfDatum("test_icmp_packet", "b", float64(len(pingPacket)))
+	nag.AddPerfDatum("req_handshake_packet", "b", float64(len(initiationPacket)))
+	nag.AddPerfDatum("res_handshake_packet", "b", float64(len(responsePacket)))
+
+	nag.AddPerfDatum("started", "s", float64(started.Unix()))
+	nag.AddPerfDatum("ended", "s", float64(ended.Unix()))
+	ok_msg := fmt.Sprintf("Validated Wireguard Server %s://%s:%d in %dms", wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(started).Milliseconds())
+	nag.AddResult(nagiosplugin.OK, ok_msg)
 }
 func ipChecksum(buf []byte) uint16 {
 	sum := uint32(0)

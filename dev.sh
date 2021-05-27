@@ -1,1 +1,3 @@
-nodemon -w . -e go -x sh -- -c './run.sh||true'
+#!/bin/bash
+cmd="nodemon -w . -e go --delay 1 -x sh -- -c './run.sh $@||true'"
+exec $cmd
