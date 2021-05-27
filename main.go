@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -19,11 +21,12 @@ import (
 )
 
 type WireguardClient struct {
-	Host          string
-	HostAddress   net.IP
-	Port          int
+	Host        string
+	HostAddress net.IP
+	Port        int
+	Proto       string
+
 	ClientPub     string
-	Proto         string
 	ClientPrivate string
 	ServerPub     string
 	PreShared     string
@@ -35,6 +38,11 @@ type WireguardClient struct {
 
 	ClientAddress net.IP
 	ServerAddress net.IP
+}
+
+type NagiosPluginResult struct {
+	Status  nagiosplugin.Status
+	Message string
 }
 
 const (
@@ -52,13 +60,13 @@ const (
 	DEFAULT_ICMP_TTL          = 20
 	DEFAULT_ICMP_SEQUENCE_ID  = 438
 	DEFAULT_ICMP_ID           = 921
+	DEFAULT_TIMEOUT           = 500
+	DEBUG_WGC_OBJECT          = false
 )
 
 var (
-	nag = nagiosplugin.NewCheck()
-)
+	timeout = kingpin.Flag("timeout", "Timeout (ms)").Default(fmt.Sprintf("%d", DEFAULT_TIMEOUT)).Int()
 
-var (
 	wgHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).String()
 	wgPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Int()
 	wgProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
@@ -78,13 +86,34 @@ var (
 	preShared  = kingpin.Flag("pre-shared", "Wireguard Pre Shared Key").Default(fmt.Sprintf("%s", DEFAULT_PRESHARED_KEY)).String()
 )
 
+var (
+	nag                   = nagiosplugin.NewCheck()
+	plugin_result_channel = make(chan NagiosPluginResult, 1)
+	result                = &NagiosPluginResult{}
+)
+
 func main() {
 	kingpin.HelpFlag.Short('h')
 	kingpin.CommandLine.DefaultEnvars()
 	kingpin.Parse()
 
-	defer nag.Finish()
+	go check_wireguard()
 
+	select {
+	case plugin_result := <-plugin_result_channel:
+		result = &plugin_result
+	case <-time.After(time.Duration(1*(*timeout)) * time.Millisecond):
+		crit_msg := fmt.Sprintf("Timed out after %dms", *timeout)
+		result = &NagiosPluginResult{
+			Status:  nagiosplugin.CRITICAL,
+			Message: crit_msg,
+		}
+	}
+	nag.AddResult(result.Status, result.Message)
+	nag.Finish()
+}
+
+func check_wireguard() {
 	hostAddress := ``
 	lookup_records_qty := 0
 	parsed_host := net.ParseIP(*wgHost)
@@ -117,14 +146,26 @@ func main() {
 		ClientAddress:  *wgClientAddress,
 		ServerAddress:  *wgServerAddress,
 	}
-	pp.Print(wgc)
+
+	if DEBUG_WGC_OBJECT {
+		pp.Print(wgc)
+	}
+
 	started := time.Now()
-	ourPrivate, _ := base64.StdEncoding.DecodeString("WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=")
-	ourPublic, _ := base64.StdEncoding.DecodeString("K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=")
-	theirPublic, _ := base64.StdEncoding.DecodeString("qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=")
-	preshared, _ := base64.StdEncoding.DecodeString("FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=")
+	ourPrivate, client_private_err := base64.StdEncoding.DecodeString(wgc.ClientPrivate)
+	Fatal(client_private_err)
+
+	ourPublic, client_public_err := base64.StdEncoding.DecodeString(wgc.ClientPub)
+	Fatal(client_public_err)
+
+	theirPublic, server_public_err := base64.StdEncoding.DecodeString(wgc.ServerPub)
+	Fatal(server_public_err)
+
+	preshared, preshared_err := base64.StdEncoding.DecodeString(wgc.PreShared)
+	Fatal(preshared_err)
+
 	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashBLAKE2s)
-	hs, _ := noise.NewHandshakeState(noise.Config{
+	hs, hs_err := noise.NewHandshakeState(noise.Config{
 		CipherSuite:           cs,
 		Random:                rand.Reader,
 		Pattern:               noise.HandshakeIK,
@@ -135,6 +176,8 @@ func main() {
 		StaticKeypair:         noise.DHKey{Private: ourPrivate, Public: ourPublic},
 		PeerStatic:            theirPublic,
 	})
+	Fatal(hs_err)
+
 	dial_started := time.Now()
 	conn, err := net.Dial(wgc.Proto, fmt.Sprintf("%s:%d", wgc.HostAddress, wgc.Port))
 	dial_dur := time.Since(dial_started)
@@ -198,7 +241,7 @@ func main() {
 	}
 
 	// write ICMP Echo packet
-	pingMessage, _ := (&icmp.Message{
+	pingMessage, ping_err := (&icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Body: &icmp.Echo{
 			ID:   int(wgc.IcmpID),
@@ -206,7 +249,9 @@ func main() {
 			Data: []byte(wgc.IcmpMessage),
 		},
 	}).Marshal(nil)
-	pingHeader, err := (&ipv4.Header{
+	Fatal(ping_err)
+
+	pingHeader, ping_header_err := (&ipv4.Header{
 		Version:  ipv4.Version,
 		Len:      ipv4.HeaderLen,
 		TotalLen: ipv4.HeaderLen + len(pingMessage),
@@ -215,6 +260,8 @@ func main() {
 		Src:      wgc.ClientAddress,
 		Dst:      wgc.ServerAddress,
 	}).Marshal()
+	Fatal(ping_header_err)
+
 	binary.BigEndian.PutUint16(pingHeader[2:], uint16(ipv4.HeaderLen+len(pingMessage))) // fix the length endianness on BSDs
 	pingData := append(append(pingHeader, pingMessage...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 	binary.BigEndian.PutUint16(pingData[10:], ipChecksum(pingData))
@@ -264,7 +311,6 @@ func main() {
 	if echo.ID != wgc.IcmpID || echo.Seq != wgc.IcmpSequenceID || string(echo.Data) != wgc.IcmpMessage {
 		log.Fatalf("incorrect echo response: %#v", echo)
 	}
-	//fmt.Printf("Read %d byte ICMP packet in %dms\n", len(string(echo.Data)), time.Since(started).Milliseconds())
 	ended := time.Now()
 
 	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(started).Milliseconds()))
@@ -272,9 +318,14 @@ func main() {
 	nag.AddPerfDatum("icmp_duration", "ms", float64(icmp_dur.Milliseconds()))
 	nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
 	nag.AddPerfDatum("handshake_duration", "ms", float64(hs_dur.Milliseconds()))
+	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
 
 	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
 	nag.AddPerfDatum("icmp_seq_id", "", float64(wgc.IcmpSequenceID))
+	nag.AddPerfDatum("icmp_id", "", float64(wgc.IcmpID))
+	nag.AddPerfDatum("icmp_req_message", "b", float64(len(wgc.IcmpMessage)))
+	nag.AddPerfDatum("icmp_echo_res_size", "b", float64(len(string(echo.Data))))
+	nag.AddPerfDatum("icmp_res_header_size", "b", float64(replyHeaderLen))
 
 	nag.AddPerfDatum("wg_port", "", float64(wgc.Port))
 	nag.AddPerfDatum("wg_client_netmask", "", float64(*wgClientNetmask))
@@ -285,9 +336,22 @@ func main() {
 
 	nag.AddPerfDatum("started", "s", float64(started.Unix()))
 	nag.AddPerfDatum("ended", "s", float64(ended.Unix()))
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s://%s:%d in %dms", wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(started).Milliseconds())
+
+	ok_msg := fmt.Sprintf("Validated Wireguard Server %s at %s://%s:%d in %dms", wgc.Host, wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(started).Milliseconds())
 	nag.AddResult(nagiosplugin.OK, ok_msg)
+	nr := NagiosPluginResult{
+		Status:  nagiosplugin.OK,
+		Message: ok_msg,
+	}
+	plugin_result_channel <- nr
 }
+
+func get_hash(in string) string {
+	hash := md5.Sum([]byte(fmt.Sprintf(`%s`, in)))
+	h := hex.EncodeToString(hash[:])[0:16]
+	return h
+}
+
 func ipChecksum(buf []byte) uint16 {
 	sum := uint32(0)
 	for ; len(buf) >= 2; buf = buf[2:] {
@@ -304,4 +368,10 @@ func ipChecksum(buf []byte) uint16 {
 		csum = 0xffff
 	}
 	return csum
+}
+
+func Fatal(e error) {
+	if e != nil {
+		log.Fatal(e)
+	}
 }
