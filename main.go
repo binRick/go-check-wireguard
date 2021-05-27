@@ -46,22 +46,23 @@ type NagiosPluginResult struct {
 }
 
 const (
-	DEFAULT_SERVER_PUB_KEY    = `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`
-	DEFAULT_CLIENT_PUB_KEY    = `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`
-	DEFAULT_PRESHARED_KEY     = `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`
-	DEFAULT_CLIENT_PRIV_KEY   = `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`
-	DEFAULT_WG_HOST           = `demo.wireguard.com`
-	DEFAULT_WG_PORT           = 12913
-	DEFAULT_WG_PROTO          = `udp`
-	DEFAULT_ICMP_MESSAGE      = `WireGuard1`
-	DEFAULT_WG_CLIENT_ADDRESS = `10.189.129.2`
-	DEFAULT_WG_SERVER_ADDRESS = `10.189.129.1`
-	DEFAULT_WG_CLIENT_NETMASK = 29
-	DEFAULT_ICMP_TTL          = 20
-	DEFAULT_ICMP_SEQUENCE_ID  = 438
-	DEFAULT_ICMP_ID           = 921
-	DEFAULT_TIMEOUT           = 500
-	DEBUG_WGC_OBJECT          = false
+	DEFAULT_SERVER_PUB_KEY     = `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`
+	DEFAULT_CLIENT_PUB_KEY     = `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`
+	DEFAULT_PRESHARED_KEY      = `FpCyhws9cxwWoV4xELtfJvjJN+zQVRPISllRWgeopVE=`
+	DEFAULT_CLIENT_PRIV_KEY    = `WAmgVYXkbT2bCtdcDwolI88/iVi/aV3/PHcUBTQSYmo=`
+	DEFAULT_WG_HOST            = `demo.wireguard.com`
+	DEFAULT_WG_PORT            = 12913
+	DEFAULT_WG_PROTO           = `udp`
+	DEFAULT_ICMP_MESSAGE       = `WireGuard1`
+	DEFAULT_WG_CLIENT_ADDRESS  = `10.189.129.2`
+	DEFAULT_WG_SERVER_ADDRESS  = `10.189.129.1`
+	DEFAULT_WG_CLIENT_NETMASK  = 29
+	DEFAULT_ICMP_TTL           = 20
+	DEFAULT_ICMP_SEQUENCE_ID   = 438
+	DEFAULT_ICMP_ID            = 921
+	DEFAULT_TIMEOUT            = 500
+	DEFAULT_WG_PROTOCOL_PROLOG = `WireGuard v1 zx2c4 Jason@zx2c4.com`
+	DEBUG_WGC_OBJECT           = false
 )
 
 var (
@@ -170,7 +171,7 @@ func check_wireguard() {
 		Random:                rand.Reader,
 		Pattern:               noise.HandshakeIK,
 		Initiator:             true,
-		Prologue:              []byte("WireGuard v1 zx2c4 Jason@zx2c4.com"),
+		Prologue:              []byte(DEFAULT_WG_PROTOCOL_PROLOG),
 		PresharedKey:          preshared,
 		PresharedKeyPlacement: 2,
 		StaticKeypair:         noise.DHKey{Private: ourPrivate, Public: ourPublic},
@@ -220,7 +221,7 @@ func check_wireguard() {
 	if n != len(responsePacket) {
 		log.Fatalf("response packet too short: want %d, got %d", len(responsePacket), n)
 	}
-	//	fmt.Printf("Read %d byte response packet in %dms\n", len(responsePacket), time.Since(started).Milliseconds())
+
 	if responsePacket[0] != 2 { // Type: Response
 		log.Fatalf("response packet type wrong: want %d, got %d", 2, responsePacket[0])
 	}
@@ -276,7 +277,6 @@ func check_wireguard() {
 	if _, err := conn.Write(pingPacket); err != nil {
 		log.Fatalf("error writing ping message: %s", err)
 	}
-	//	fmt.Printf("Wrote %d byte ICMP packet in %dms\n", len(pingPacket), time.Since(started).Milliseconds())
 
 	// read ICMP Echo Reply packet
 	replyPacket := make([]byte, 80)
