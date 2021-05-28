@@ -79,7 +79,6 @@ var (
 
 	wgClientAddress = kingpin.Flag("client-address", "Wireguard Client Address").Default(fmt.Sprintf("%s", DEFAULT_WG_CLIENT_ADDRESS)).IP()
 	wgServerAddress = kingpin.Flag("server-address", "Wireguard Client Address").Default(fmt.Sprintf("%s", DEFAULT_WG_SERVER_ADDRESS)).IP()
-	wgClientNetmask = kingpin.Flag("client-netmask", "Wireguard Client Address").Default(fmt.Sprintf("%d", DEFAULT_WG_CLIENT_NETMASK)).Int()
 
 	serverPub  = kingpin.Flag("server-pub", "Wireguard Server Public Key").Default(fmt.Sprintf("%s", DEFAULT_SERVER_PUB_KEY)).String()
 	clientPub  = kingpin.Flag("client-pub", "Wireguard Client Public Key").Default(fmt.Sprintf("%s", DEFAULT_CLIENT_PUB_KEY)).String()
@@ -328,7 +327,6 @@ func check_wireguard() {
 	nag.AddPerfDatum("icmp_res_header_size", "b", float64(replyHeaderLen))
 
 	nag.AddPerfDatum("wg_port", "", float64(wgc.Port))
-	nag.AddPerfDatum("wg_client_netmask", "", float64(*wgClientNetmask))
 
 	nag.AddPerfDatum("test_icmp_packet", "b", float64(len(pingPacket)))
 	nag.AddPerfDatum("req_handshake_packet", "b", float64(len(initiationPacket)))
