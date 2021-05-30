@@ -7,10 +7,13 @@ import (
 )
 
 var (
+	destHost = kingpin.Flag("destination-host", "Destination Host. default is wireguard server address.").Default(fmt.Sprintf("%s", `default`)).OverrideDefaultFromEnvar(`DESTINATION_HOST`).String()
+	destPort = kingpin.Flag("destination-port", "Destination Port. default is 53 for dns, etc..").Default(fmt.Sprintf("%d", 0)).OverrideDefaultFromEnvar(`DESTINATION_PORT`).Int()
+
 	timeout = kingpin.Flag("timeout", "Timeout (ms)").OverrideDefaultFromEnvar(`CHECK_TIMEOUT`).Default(fmt.Sprintf("%d", DEFAULT_TIMEOUT)).Short('t').Int()
 
 	debugMode = kingpin.Flag("enable-debug-mode", "Enable Debug Mode").Default(fmt.Sprintf("%v", false)).OverrideDefaultFromEnvar(`DEBUG_MODE`).Short('d').Bool()
-	wgHost    = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_SERVER`).Short('H').String()
+	wgHost    = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_HOST`).Short('H').String()
 	wgPort    = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').Int()
 	wgProto   = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
 
@@ -18,7 +21,7 @@ var (
 	icmpTTL         = kingpin.Flag("icmp-ttl", "ICMP Packet TTL").Default(fmt.Sprintf("%d", DEFAULT_ICMP_TTL)).Int()
 	icmpSequenceID  = kingpin.Flag("icmp-seq", "ICMP Packet TCP Sequence ID").Default(fmt.Sprintf("%d", DEFAULT_ICMP_SEQUENCE_ID)).Int()
 	icmpID          = kingpin.Flag("icmp-id", "ICMP Packet TCP ID").Default(fmt.Sprintf("%d", DEFAULT_ICMP_ID)).Int()
-	icmpDestination = kingpin.Flag("icmp-destination", "ICMP Destination. default is wireguard server address").Default(fmt.Sprintf("%s", `default`)).String()
+	icmpDestination = kingpin.Flag("icmp-destination", "ICMP Destination. default is wireguard server address").Default(fmt.Sprintf("%s", `default`)).OverrideDefaultFromEnvar(`ICMP_DESTINATION`).String()
 
 	wgClientAddress = kingpin.Flag("client-address", "Wireguard Client Address").Default(fmt.Sprintf("%s", DEFAULT_WG_CLIENT_ADDRESS)).OverrideDefaultFromEnvar(`CLIENT_ADDRESS`).IP()
 	wgServerAddress = kingpin.Flag("server-address", "Wireguard Server Address").Default(fmt.Sprintf("%s", DEFAULT_WG_SERVER_ADDRESS)).OverrideDefaultFromEnvar(`SERVER_ADDRESS`).IP()

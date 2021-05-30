@@ -4,11 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"net"
 	"time"
 
+	"github.com/cirocosta/rawdns/lib"
 	"github.com/google/gopacket/layers"
 	"github.com/k0kubun/pp"
-	"github.com/miekg/dns"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -29,24 +30,51 @@ var (
 )
 
 func (w *WireguardClient) WriteDnsPacket() {
-
 	dns_question := fmt.Sprintf("%s.", *dnsRecord)
-	dns_type := dns.TypeA
+	_dns_question := fmt.Sprintf("%s", *dnsRecord)
 
-	dns_msg := new(dns.Msg)
-	dns_msg.SetQuestion(dns_question, dns_type)
-
-	dns_question_packed, err := dns_msg.Pack()
+	queryMsg := &lib.Message{
+		Header: lib.Header{
+			ID:      10,
+			QR:      0,
+			Opcode:  lib.OpcodeQuery,
+			QDCOUNT: 1,
+			RD:      1,
+		},
+		Questions: []*lib.Question{
+			{
+				QNAME:  _dns_question,
+				QTYPE:  lib.QTypeA,
+				QCLASS: lib.QClassIN,
+			},
+		},
+	}
+	dns_question_packed, err := queryMsg.Marshal()
 	Fatal(err)
 
-	pp.Print(dns_msg)
+	pp.Print(dns_question_packed)
 
 	src_port := 45223
 
+	var check_dst net.IP
+	var check_port int
+	switch *destHost {
+	case `default`:
+		check_dst = w.ServerAddress
+	default:
+		check_dst = net.ParseIP(*destHost)
+	}
+	switch *destPort {
+	case 0:
+		check_port = 53
+	default:
+		check_port = *destPort
+	}
+
 	udp := &layers.UDP{}
 	udp.SrcPort = layers.UDPPort(src_port)
-	udp.DstPort = layers.UDPPort(53)
-	//	pp.Print(udp.String())
+	udp.DstPort = layers.UDPPort(check_port)
+	pp.Print(udp)
 
 	req_header, req_header_err := (&ipv4.Header{
 		Version:  ipv4.Version,
@@ -54,11 +82,12 @@ func (w *WireguardClient) WriteDnsPacket() {
 		TotalLen: ipv4.HeaderLen + len(dns_question_packed),
 		Protocol: 17, // UDP     https://golang.org/src/net/lookup.go?s=6530:6613
 		TTL:      int(w.IcmpTTL),
-
-		Src: w.ClientAddress,
-		Dst: w.ServerAddress,
+		Src:      w.ClientAddress,
+		Dst:      check_dst,
 	}).Marshal()
 	Fatal(req_header_err)
+
+	//	udp_demo()
 
 	binary.BigEndian.PutUint16(req_header[2:], uint16(ipv4.HeaderLen+len(dns_question_packed))) // fix the length endianness on BSDs
 	reqData := append(append(req_header, dns_question_packed...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -74,23 +103,22 @@ func (w *WireguardClient) WriteDnsPacket() {
 	enc_packet, err := w.SendCipher.Encrypt(reqPacket, nil, reqData) // Payload data
 	Fatal(err)
 
-	if _, err := w.Connection.Write(enc_packet); err != nil {
-		log.Fatalf("error writing reqData message: %s", err)
-	}
+	bytes_written, err := w.Connection.Write(enc_packet)
+	Fatal(err)
 
 	msg := fmt.Sprintf(`
 
 Wrote %d bytes to connection
-
 Encrypted packet %d bytes
 clear_packet %d bytes
 reqData %d bytes
 header %d bytes
 dns_question_packed %d bytes
 dns_question: %s
-dns_type: %d
 
-`, len(reqPacket), len(enc_packet), len(clear_packet), len(reqData), len(req_header), len(dns_question_packed), dns_question, dns_type,
+`,
+		bytes_written,
+		len(enc_packet), len(clear_packet), len(reqData), len(req_header), len(dns_question_packed), dns_question,
 	)
 	fmt.Println(msg)
 
@@ -98,23 +126,24 @@ dns_type: %d
 }
 
 func (w *WireguardClient) ReadDnsPacket() {
-	w.ReadIcmpPacketStarted = time.Now()
+	w.ReadPacketStarted = time.Now()
 	replyPacket := make([]byte, 80)
 	fmt.Printf(`
 
 waiting for reply Packet...........
 
 `)
+	wait_started := time.Now()
 	n, err := w.Connection.Read(replyPacket)
 
 	fmt.Printf(`
 
-read reply Packet!
+read reply Packet after %d ms!
 
-`)
+`, time.Since(wait_started).Milliseconds())
 	Fatal(err)
 
-	w.ReadIcmpPacketDuration = time.Since(w.ReadIcmpPacketStarted)
+	w.ReadPacketDuration = time.Since(w.ReadPacketStarted)
 	if err != nil {
 		log.Fatalf("error reading reqData reply message: %s", err)
 	}

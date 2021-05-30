@@ -61,6 +61,9 @@ type WireguardClient struct {
 	DecodeStarted  time.Time
 	DecodeDuration time.Duration
 
+	ReadPacketStarted  time.Time
+	ReadPacketDuration time.Duration
+
 	ReadHandshakeStarted  time.Time
 	ReadHandshakeDuration time.Duration
 
