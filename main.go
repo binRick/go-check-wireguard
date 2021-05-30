@@ -1,9 +1,6 @@
 package main
 
 import (
-	"go-check-wireguard/types"
-
-	"github.com/k0kubun/pp"
 	"github.com/olorin/nagiosplugin"
 )
 
@@ -36,7 +33,6 @@ var (
 
 func main() {
 	if false {
-		pp.Print(types.MYVAR1)
 	}
 	exec_cli()
 }

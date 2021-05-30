@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"go-check-wireguard/types"
 	"os"
 	"time"
 )
@@ -10,8 +9,6 @@ import (
 var (
 	wgc *WireguardClient
 )
-
-type WireguardClient types.WireguardClient
 
 func (w *WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
 	if w.IsFailed() {
@@ -23,7 +20,7 @@ func (w *WireguardClient) HandleStageExecution(name string, fxn func() (bool, in
 		success = false
 	}
 	dur := time.Since(started)
-	csr := types.CheckStageResult{
+	csr := CheckStageResult{
 		Name:     name,
 		Started:  started,
 		Duration: dur,
