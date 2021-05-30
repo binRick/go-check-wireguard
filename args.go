@@ -9,7 +9,7 @@ import (
 var (
 	timeout = kingpin.Flag("timeout", "Timeout (ms)").OverrideDefaultFromEnvar(`CHECK_TIMEOUT`).Default(fmt.Sprintf("%d", DEFAULT_TIMEOUT)).Short('t').Int()
 
-	wgHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_SERVER`).String()
+	wgHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_SERVER`).Short('H').String()
 	wgPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').Int()
 	wgProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
 

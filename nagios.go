@@ -44,3 +44,13 @@ func (w *WireguardClient) GenerateOKNagiosPluginResult() NagiosPluginResult {
 	return nr
 
 }
+
+func GenerateTimedoutNagiosPluginsResult() (result *NagiosPluginResult) {
+	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing mode %s", *wgHost, *wgPort, *timeout, strings.ToUpper(*checkMode))
+	result = &NagiosPluginResult{
+		Status:  nagiosplugin.CRITICAL,
+		Message: crit_msg,
+	}
+	return
+
+}
