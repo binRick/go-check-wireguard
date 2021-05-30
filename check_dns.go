@@ -4,12 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"net"
 	"time"
 
-	"github.com/cirocosta/rawdns/lib"
-	"github.com/google/gopacket/layers"
-	"github.com/k0kubun/pp"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -29,85 +25,33 @@ var (
 	dnsRecord = kingpin.Flag("dns-record", "DNS Record to lookup").Default(fmt.Sprintf("%s", DEFAULT_DNS_RECORD)).OverrideDefaultFromEnvar(`DEFAULT_DNS_RECORD`).String()
 )
 
+func checkSum(msg []byte) uint16 {
+	sum := 0
+	for n := 1; n < len(msg)-1; n += 2 {
+		sum += int(msg[n])*256 + int(msg[n+1])
+	}
+	sum = (sum >> 16) + (sum & 0xffff)
+	sum += (sum >> 16)
+	var ans = uint16(^sum)
+	return ans
+}
+
 func (w *WireguardClient) WriteDnsPacket() {
-	dns_question := fmt.Sprintf("%s.", *dnsRecord)
-	_dns_question := fmt.Sprintf("%s", *dnsRecord)
 
-	queryMsg := &lib.Message{
-		Header: lib.Header{
-			ID:      10,
-			QR:      0,
-			Opcode:  lib.OpcodeQuery,
-			QDCOUNT: 1,
-			RD:      1,
-		},
-		Questions: []*lib.Question{
-			{
-				QNAME:  _dns_question,
-				QTYPE:  lib.QTypeA,
-				QCLASS: lib.QClassIN,
-			},
-		},
-	}
-	dns_question_packed, err := queryMsg.Marshal()
-	Fatal(err)
+	dns_question_packed := wgc.dns_buffer()
 
-	pp.Print(dns_question_packed)
-
-	src_port := 45223
-
-	var check_dst net.IP
-	var check_port int
-	switch *destHost {
-	case `default`:
-		check_dst = w.ServerAddress
-	default:
-		check_dst = net.ParseIP(*destHost)
-	}
-	switch *destPort {
-	case 0:
-		check_port = 53
-	default:
-		check_port = *destPort
-	}
-
-	udp := &layers.UDP{}
-	udp.SrcPort = layers.UDPPort(src_port)
-	udp.DstPort = layers.UDPPort(check_port)
-	pp.Print(udp)
-
-	_pl := dns_question_packed
-	pl := get_raw_udp_payload(_pl)
-	fmt.Println(check_dst)
 	w.SetCheckDestination()
+
 	req_header, req_header_err := (&ipv4.Header{
-		Version: ipv4.Version,
-		Len:     ipv4.HeaderLen,
-		//TotalLen: ipv4.HeaderLen + len(pl),
+		Version:  ipv4.Version,
+		Len:      ipv4.HeaderLen,
 		TotalLen: ipv4.HeaderLen + len(dns_question_packed),
 		Protocol: 17, // UDP     https://golang.org/src/net/lookup.go?s=6530:6613
 		TTL:      int(w.IcmpTTL),
 		Src:      w.ClientAddress,
-		//		Dst:      check_dst,
-		Dst: w.GetCheckDestDestination(),
+		Dst:      w.GetCheckDestDestination(),
 	}).Marshal()
 	Fatal(req_header_err)
-
-	//	_pl := []byte(`yyyyadsa8ys97da`)
-	fmt.Printf(`
-
-
-get_raw_udp_payload: %d bytes:
-
-
-%s
-
-
-
-`,
-		len(pl),
-		pl,
-	)
 
 	binary.BigEndian.PutUint16(req_header[2:], uint16(ipv4.HeaderLen+len(dns_question_packed))) // fix the length endianness on BSDs
 	reqData := append(append(req_header, dns_question_packed...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -134,14 +78,14 @@ clear_packet %d bytes
 reqData %d bytes
 header %d bytes
 dns_question_packed %d bytes
-dns_question: %s
 
 `,
 		bytes_written,
-		len(enc_packet), len(clear_packet), len(reqData), len(req_header), len(dns_question_packed), dns_question,
+		len(enc_packet), len(clear_packet), len(reqData), len(req_header), len(dns_question_packed),
 	)
-	fmt.Println(msg)
-
+	if false {
+		fmt.Println(msg)
+	}
 	return
 }
 

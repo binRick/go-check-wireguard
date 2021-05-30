@@ -8,7 +8,6 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/k0kubun/pp"
 	"golang.org/x/sys/unix"
 )
 
@@ -176,7 +175,7 @@ func get_raw_udp_payload(payload []byte) []byte {
 		if runtime.GOOS == "darwin" {
 			bb[2], bb[3] = bb[3], bb[2]
 		}
-		pp.Print(bb)
+		//	pp.Print(bb)
 		return bb
 	}
 }

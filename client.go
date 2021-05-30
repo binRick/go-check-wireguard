@@ -33,6 +33,13 @@ func (w *WireguardClient) SetCheckDestination() {
 	return
 }
 
+func (w *WireguardClient) GetCheckSourceAddress() net.IP {
+	if *sourceHost == `default` {
+		return *wgClientAddress
+	}
+	return net.ParseIP(*sourceHost)
+}
+
 func (w *WireguardClient) GetCheckDestDestination() net.IP {
 	if w.CheckDestinationHost == nil {
 		w.SetCheckDestination()

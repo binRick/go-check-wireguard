@@ -3,6 +3,7 @@ module go-check-wireguard
 go 1.16
 
 require (
+	github.com/alabianca/dnsPacket v0.0.0-20190101170727-71b3802589ea // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15 // indirect
 	github.com/cirocosta/rawdns v0.0.0-20191213194345-8bbd9250550b

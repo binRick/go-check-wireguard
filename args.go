@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	destHost = kingpin.Flag("destination-host", "Destination Host. default is wireguard server address.").Default(fmt.Sprintf("%s", `default`)).OverrideDefaultFromEnvar(`DESTINATION_HOST`).String()
-	destPort = kingpin.Flag("destination-port", "Destination Port. default is 53 for dns, etc..").Default(fmt.Sprintf("%d", 0)).OverrideDefaultFromEnvar(`DESTINATION_PORT`).Int()
+	sourceHost = kingpin.Flag("source-host", "Source Host. default is wireguard client address.").Default(fmt.Sprintf("%s", `default`)).OverrideDefaultFromEnvar(`SOURCE_HOST`).String()
+	destHost   = kingpin.Flag("destination-host", "Destination Host. default is wireguard server address.").Default(fmt.Sprintf("%s", `default`)).OverrideDefaultFromEnvar(`DESTINATION_HOST`).String()
+	destPort   = kingpin.Flag("destination-port", "Destination Port. default is 53 for dns, etc..").Default(fmt.Sprintf("%d", 0)).OverrideDefaultFromEnvar(`DESTINATION_PORT`).Int()
 
 	timeout = kingpin.Flag("timeout", "Timeout (ms)").OverrideDefaultFromEnvar(`CHECK_TIMEOUT`).Default(fmt.Sprintf("%d", DEFAULT_TIMEOUT)).Short('t').Int()
 
