@@ -22,7 +22,9 @@ func exec_cli() {
 		wgcResult = GenerateTimedoutNagiosPluginsResult()
 	}
 
-	fmt.Printf("wgcResult.wgc.NagiosPluginResult=%s\n", wgcResult.wgc.NagiosPluginResult)
+	if false {
+		fmt.Printf("wgcResult.wgc.NagiosPluginResult=%s\n", wgcResult.wgc.NagiosPluginResult)
+	}
 
 	if wgcResult.wgc.NagiosPluginResult != nil {
 		nag.AddResult(wgcResult.wgc.NagiosPluginResult.Status, wgcResult.wgc.NagiosPluginResult.Message)

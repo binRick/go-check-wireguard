@@ -15,8 +15,10 @@ var (
 
 	debugMode = kingpin.Flag("enable-debug-mode", "Enable Debug Mode").Default(fmt.Sprintf("%v", false)).OverrideDefaultFromEnvar(`DEBUG_MODE`).Short('d').Bool()
 	wgHost    = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_HOST`).Short('H').String()
-	wgPort    = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').Int()
-	wgProto   = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
+
+	wgPort = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').OverrideDefaultFromEnvar(`WIREGUARD_PORT`).Int()
+
+	wgProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
 
 	icmpMessage     = kingpin.Flag("icmp-message", "ICMP Packet Message").Default(fmt.Sprintf("%s", DEFAULT_ICMP_MESSAGE)).String()
 	icmpTTL         = kingpin.Flag("icmp-ttl", "ICMP Packet TTL").Default(fmt.Sprintf("%d", DEFAULT_ICMP_TTL)).Int()
