@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -18,6 +16,10 @@ import (
 	"golang.org/x/net/ipv4"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
+
+func main() {
+	exec_cli()
+}
 
 const (
 	DEFAULT_SERVER_PUB_KEY     = `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`
@@ -66,6 +68,20 @@ var (
 	result                = &NagiosPluginResult{}
 	lookup_records_qty    int
 )
+
+func (w *WireguardClient) Close() {
+	w.Connection.Close()
+}
+
+func (w *WireguardClient) Connect() {
+	w.ConnectionStarted = time.Now()
+	conn, err := net.Dial(w.Proto, fmt.Sprintf("%s:%d", w.HostAddress, w.Port))
+	if err != nil {
+		log.Fatalf("error dialing udp socket: %s", err)
+	}
+	w.ConnectionDuration = time.Since(w.ConnectionStarted)
+	w.Connection = conn
+}
 
 func (w *WireguardClient) ReadICMPPacket() {
 	w.ReadIcmpPacketStarted = time.Now()
@@ -293,61 +309,4 @@ func (w *WireguardClient) DecodeKeys() {
 	w.DecodedKeys = &decoded_keys
 	w.DecodeDuration = time.Since(w.DecodeStarted)
 	return
-}
-
-func check_wireguard() {
-	wgc := NewWireguardClient()
-	wgc.ParseHostAddress()
-	wgc.DecodeKeys()
-	wgc.PrepareHandshake()
-	wgc.Connect()
-	defer wgc.Close()
-	wgc.WriteHandshake()
-	wgc.ReadHandshakeResponse()
-	wgc.WriteICMPPacket()
-	wgc.ReadICMPPacket()
-	wgc.Ended = time.Now()
-
-	wgc.AddPerfData()
-
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s at %s://%s:%d in %dms", wgc.Host, wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(wgc.Started).Milliseconds())
-	nag.AddResult(nagiosplugin.OK, ok_msg)
-	nr := NagiosPluginResult{
-		Status:  nagiosplugin.OK,
-		Message: ok_msg,
-	}
-	plugin_result_channel <- nr
-}
-
-func get_hash(in string) string {
-	hash := md5.Sum([]byte(fmt.Sprintf(`%s`, in)))
-	h := hex.EncodeToString(hash[:])[0:16]
-	return h
-}
-
-func ipChecksum(buf []byte) uint16 {
-	sum := uint32(0)
-	for ; len(buf) >= 2; buf = buf[2:] {
-		sum += uint32(buf[0])<<8 | uint32(buf[1])
-	}
-	if len(buf) > 0 {
-		sum += uint32(buf[0]) << 8
-	}
-	for sum > 0xffff {
-		sum = (sum >> 16) + (sum & 0xffff)
-	}
-	csum := ^uint16(sum)
-	if csum == 0 {
-		csum = 0xffff
-	}
-	return csum
-}
-
-func Fatal(e error) {
-	if e != nil {
-		log.Fatal(e)
-	}
-}
-func main() {
-	exec_cli()
 }
