@@ -19,6 +19,34 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+func main() {
+	kingpin.HelpFlag.Short('h')
+	kingpin.CommandLine.DefaultEnvars()
+	kingpin.Parse()
+
+	go check_wireguard()
+
+	select {
+	case plugin_result := <-plugin_result_channel:
+		result = &plugin_result
+	case <-time.After(time.Duration(1*(*timeout)) * time.Millisecond):
+		crit_msg := fmt.Sprintf("Timed out after %dms", *timeout)
+		result = &NagiosPluginResult{
+			Status:  nagiosplugin.CRITICAL,
+			Message: crit_msg,
+		}
+	}
+	nag.AddResult(result.Status, result.Message)
+	nag.Finish()
+}
+
+type EncodedKeys struct {
+	ClientPriv string
+	ClientPub  string
+	ServerPub  string
+	PreShared  string
+}
+
 type DecodedKeys struct {
 	ClientPriv []byte
 	ClientPub  []byte
@@ -44,11 +72,6 @@ type WireguardClient struct {
 	Started     time.Time
 	Ended       time.Time
 
-	ClientPub  string
-	ClientPriv string
-	ServerPub  string
-	PreShared  string
-
 	IcmpMessage    string
 	IcmpTTL        int
 	IcmpSequenceID int
@@ -57,15 +80,28 @@ type WireguardClient struct {
 	ClientAddress net.IP
 	ServerAddress net.IP
 
+	EncodedKeys *EncodedKeys
 	DecodedKeys *DecodedKeys
-	Handshake   *Handshake
 
-	Connection         net.Conn
+	Handshake *Handshake
+
+	Connection net.Conn
+
 	ConnectionDuration time.Duration
 	ConnectionStarted  time.Time
 
-	TheirIndex    uint32
-	OurIndex      uint32
+	DecodeStarted  time.Time
+	DecodeDuration time.Duration
+
+	ReadHandshakeStarted  time.Time
+	ReadHandshakeDuration time.Duration
+
+	ReadIcmpPacketStarted  time.Time
+	ReadIcmpPacketDuration time.Duration
+
+	TheirIndex uint32
+	OurIndex   uint32
+
 	SendCipher    *noise.CipherState
 	ReceiveCipher *noise.CipherState
 }
@@ -120,28 +156,8 @@ var (
 	nag                   = nagiosplugin.NewCheck()
 	plugin_result_channel = make(chan NagiosPluginResult, 1)
 	result                = &NagiosPluginResult{}
+	lookup_records_qty    int
 )
-
-func main() {
-	kingpin.HelpFlag.Short('h')
-	kingpin.CommandLine.DefaultEnvars()
-	kingpin.Parse()
-
-	go check_wireguard()
-
-	select {
-	case plugin_result := <-plugin_result_channel:
-		result = &plugin_result
-	case <-time.After(time.Duration(1*(*timeout)) * time.Millisecond):
-		crit_msg := fmt.Sprintf("Timed out after %dms", *timeout)
-		result = &NagiosPluginResult{
-			Status:  nagiosplugin.CRITICAL,
-			Message: crit_msg,
-		}
-	}
-	nag.AddResult(result.Status, result.Message)
-	nag.Finish()
-}
 
 func (w *WireguardClient) Close() {
 	w.Connection.Close()
@@ -158,12 +174,15 @@ func (w *WireguardClient) Connect() {
 }
 
 func (w *WireguardClient) AddPerfData() {
-	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(w.Started).Milliseconds()))
-	nag.AddPerfDatum("dial_duration", "ms", float64(w.ConnectionDuration.Milliseconds()))
-	//nag.AddPerfDatum("icmp_duration", "ms", float64(icmp_dur.Milliseconds()))
-	//nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
-	//	nag.AddPerfDatum("handshake_duration", "ms", float64(hs_dur.Milliseconds()))
 	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
+
+	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(w.Started).Milliseconds()))
+	nag.AddPerfDatum("read_handshake_duration", "ms", float64(w.ReadHandshakeDuration.Milliseconds()))
+	nag.AddPerfDatum("read_icmp_packet_duration", "ms", float64(w.ReadIcmpPacketDuration.Milliseconds()))
+	nag.AddPerfDatum("decode_duration", "ms", float64(w.DecodeDuration.Milliseconds()))
+	nag.AddPerfDatum("connect_duration", "ms", float64(w.ConnectionDuration.Milliseconds()))
+
+	//nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
 
 	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
 	nag.AddPerfDatum("icmp_seq_id", "", float64(w.IcmpSequenceID))
@@ -183,11 +202,10 @@ func (w *WireguardClient) AddPerfData() {
 }
 
 func (w *WireguardClient) ReadICMPPacket() {
-	// read ICMP Echo Reply packet
+	w.ReadIcmpPacketStarted = time.Now()
 	replyPacket := make([]byte, 80)
-	//icmp_started := time.Now()
 	n, err := w.Connection.Read(replyPacket)
-	//	icmp_dur := time.Since(icmp_started)
+	w.ReadIcmpPacketDuration = time.Since(w.ReadIcmpPacketStarted)
 	if err != nil {
 		log.Fatalf("error reading ping reply message: %s", err)
 	}
@@ -219,8 +237,9 @@ func (w *WireguardClient) ReadICMPPacket() {
 
 	return
 }
+
+// write ICMP Echo packet
 func (w *WireguardClient) WriteICMPPacket() {
-	// write ICMP Echo packet
 	pingMessage, ping_err := (&icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Body: &icmp.Echo{
@@ -260,14 +279,16 @@ func (w *WireguardClient) WriteICMPPacket() {
 
 func NewWireguardClient() *WireguardClient {
 	wgc := &WireguardClient{
-		Started:        time.Now(),
-		Host:           *wgHost,
-		Port:           *wgPort,
-		ClientPub:      *clientPub,
+		Started: time.Now(),
+		Host:    *wgHost,
+		Port:    *wgPort,
+		EncodedKeys: &EncodedKeys{
+			ClientPriv: *clientPriv,
+			ServerPub:  *serverPub,
+			PreShared:  *preShared,
+			ClientPub:  *clientPub,
+		},
 		Proto:          *wgProto,
-		ClientPriv:     *clientPriv,
-		ServerPub:      *serverPub,
-		PreShared:      *preShared,
 		IcmpMessage:    *icmpMessage,
 		IcmpTTL:        *icmpTTL,
 		IcmpID:         *icmpID,
@@ -280,11 +301,10 @@ func NewWireguardClient() *WireguardClient {
 }
 
 func (w *WireguardClient) ReadHandshakeResponse() {
-	// read handshake response packet
+	w.ReadHandshakeStarted = time.Now()
 	responsePacket := make([]byte, 92)
-	//	res_started := time.Now()
 	n, err := w.Connection.Read(responsePacket)
-	//	hs_dur := time.Since(res_started)
+	w.ReadHandshakeDuration = time.Since(w.ReadHandshakeStarted)
 	if err != nil {
 		log.Fatalf("error reading response packet: %s", err)
 	}
@@ -387,27 +407,27 @@ func (w *WireguardClient) ParseHostAddress() {
 }
 
 func (w *WireguardClient) DecodeKeys() {
+	w.DecodeStarted = time.Now()
 	decoded_keys := DecodedKeys{}
-	ourPrivate, client_private_err := base64.StdEncoding.DecodeString(w.ClientPriv)
+	ourPrivate, client_private_err := base64.StdEncoding.DecodeString(w.EncodedKeys.ClientPriv)
 	Fatal(client_private_err)
 	decoded_keys.ClientPriv = ourPrivate
 
-	ourPublic, client_public_err := base64.StdEncoding.DecodeString(w.ClientPub)
+	ourPublic, client_public_err := base64.StdEncoding.DecodeString(w.EncodedKeys.ClientPub)
 	Fatal(client_public_err)
 	decoded_keys.ClientPub = ourPublic
 
-	theirPublic, server_public_err := base64.StdEncoding.DecodeString(w.ServerPub)
+	theirPublic, server_public_err := base64.StdEncoding.DecodeString(w.EncodedKeys.ServerPub)
 	Fatal(server_public_err)
 	decoded_keys.ServerPub = theirPublic
 
-	preshared, preshared_err := base64.StdEncoding.DecodeString(w.PreShared)
+	preshared, preshared_err := base64.StdEncoding.DecodeString(w.EncodedKeys.PreShared)
 	Fatal(preshared_err)
 	decoded_keys.PreShared = preshared
 	w.DecodedKeys = &decoded_keys
+	w.DecodeDuration = time.Since(w.DecodeStarted)
 	return
 }
-
-var lookup_records_qty int
 
 func check_wireguard() {
 	wgc := NewWireguardClient()
