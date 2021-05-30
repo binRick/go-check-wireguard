@@ -6,7 +6,8 @@ import (
 
 func exec_cli() {
 	parse_args()
-	handle_check_mode()
+
+	go handle_check_mode()
 
 	select {
 	case plugin_result := <-plugin_result_channel:

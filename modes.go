@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	checkMode = kingpin.Flag("check-mode", "Check Mode").Short('m').Default(fmt.Sprintf("%s", DEFAULT_CHECK_MODE)).String()
+	checkMode = kingpin.Flag("check-mode", "Check Mode").Short('m').Default(fmt.Sprintf("%s", DEFAULT_CHECK_MODE)).OverrideDefaultFromEnvar(`CHECK_MODE`).String()
 )
 
 func GenerateTimedoutNagiosPluginsResult() (result *NagiosPluginResult) {
