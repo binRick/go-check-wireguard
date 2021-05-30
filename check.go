@@ -7,7 +7,7 @@ import (
 	"github.com/olorin/nagiosplugin"
 )
 
-func check_wireguard() {
+func check_wireguard_icmp() {
 	wgc := NewWireguardClient()
 	wgc.ParseHostAddress()
 	wgc.DecodeKeys()

@@ -26,3 +26,9 @@ var (
 	clientPriv = kingpin.Flag("client-priv", "Wireguard Client Private Key").Default(fmt.Sprintf("%s", DEFAULT_CLIENT_PRIV_KEY)).String()
 	preShared  = kingpin.Flag("pre-shared", "Wireguard Pre Shared Key").Default(fmt.Sprintf("%s", DEFAULT_PRESHARED_KEY)).String()
 )
+
+func parse_args() {
+	kingpin.HelpFlag.Short('h')
+	kingpin.CommandLine.DefaultEnvars()
+	kingpin.Parse()
+}
