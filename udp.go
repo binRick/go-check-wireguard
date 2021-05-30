@@ -90,7 +90,7 @@ func (u *udphdr) checksum(ip *iphdr, payload []byte) {
 	u.csum = checksum(b.Bytes())
 }
 
-func udp_demo() {
+func get_raw_udp_payload(payload []byte) []byte {
 	ipsrcstr := "127.0.0.1"
 	ipdststr := "127.0.0.1"
 	udpsrc := uint(10000)
@@ -130,7 +130,7 @@ func udp_demo() {
 	// the kernel will route the packet based on the IP header
 
 	for {
-		payload := []byte(`xxxxxxxxxx`)
+		//		payload := []byte(`xxxxxxxxxyyyyyyyyyyx`)
 		udplen := 8 + len(payload)
 		totalLen := 20 + udplen
 		if totalLen > 0xffff {
@@ -177,6 +177,6 @@ func udp_demo() {
 			bb[2], bb[3] = bb[3], bb[2]
 		}
 		pp.Print(bb)
+		return bb
 	}
-
 }

@@ -7,7 +7,38 @@ import (
 	"time"
 )
 
-//type WireguardClient types.WireguardClient
+func (w *WireguardClient) SetCheckDestination() {
+
+	switch *destHost {
+	case `default`:
+		w.CheckDestinationHost = w.ServerAddress
+	default:
+		w.CheckDestinationHost = net.ParseIP(*destHost)
+	}
+
+	switch *destPort {
+	case 0:
+		switch *checkMode {
+		case `icmp`:
+			w.CheckDestinationPort = 0
+		case `dns`:
+			w.CheckDestinationPort = 53
+		default:
+			Fatal(fmt.Errorf(`invalid check mode %s`, *checkMode))
+		}
+	default:
+		w.CheckDestinationPort = *destPort
+	}
+
+	return
+}
+
+func (w *WireguardClient) GetCheckDestDestination() net.IP {
+	if w.CheckDestinationHost == nil {
+		w.SetCheckDestination()
+	}
+	return w.CheckDestinationHost
+}
 
 func NewWireguardClient() *WireguardClient {
 	wgc := &WireguardClient{
@@ -29,6 +60,7 @@ func NewWireguardClient() *WireguardClient {
 		ServerAddress:  *wgServerAddress,
 		DebugMode:      debug_mode_enabled(),
 	}
+
 	return wgc
 
 }

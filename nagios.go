@@ -37,7 +37,11 @@ func (w *WireguardClient) AddPerfData() {
 }
 
 func (w *WireguardClient) GenerateOKMessage() string {
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s using mode %d %s stages at %s://%s:%d in %dms", w.Host, len(w.CheckStageResults), strings.ToUpper(*checkMode), w.Proto, w.HostAddress, w.Port, time.Since(w.Started).Milliseconds())
+	msg_prefix := fmt.Sprintf("Validated Wireguard Server %s using mode %d %s stages at %s://%s:%d in %dms", w.Host, len(w.CheckStageResults), strings.ToUpper(*checkMode), w.Proto, w.HostAddress, w.Port, time.Since(w.Started).Milliseconds())
+	check_msg := fmt.Sprintf("CheckDestinationHost: %s:%d", w.CheckDestinationHost, w.CheckDestinationPort)
+
+	ok_msg := fmt.Sprintf("%s %s", msg_prefix, check_msg)
+
 	return ok_msg
 }
 

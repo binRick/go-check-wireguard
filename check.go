@@ -68,8 +68,7 @@ func handle_check_mode() {
 
 	wgc.NagiosPluginResult = &res
 	ret := WireguardClientAndNagiosPluginResult{
-		wgc:    wgc,
-		result: wgc.NagiosPluginResult,
+		wgc: wgc,
 	}
 	plugin_result_channel <- ret
 }

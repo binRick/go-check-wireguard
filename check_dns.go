@@ -76,18 +76,38 @@ func (w *WireguardClient) WriteDnsPacket() {
 	udp.DstPort = layers.UDPPort(check_port)
 	pp.Print(udp)
 
+	_pl := dns_question_packed
+	pl := get_raw_udp_payload(_pl)
+	fmt.Println(check_dst)
+	w.SetCheckDestination()
 	req_header, req_header_err := (&ipv4.Header{
-		Version:  ipv4.Version,
-		Len:      ipv4.HeaderLen,
+		Version: ipv4.Version,
+		Len:     ipv4.HeaderLen,
+		//TotalLen: ipv4.HeaderLen + len(pl),
 		TotalLen: ipv4.HeaderLen + len(dns_question_packed),
 		Protocol: 17, // UDP     https://golang.org/src/net/lookup.go?s=6530:6613
 		TTL:      int(w.IcmpTTL),
 		Src:      w.ClientAddress,
-		Dst:      check_dst,
+		//		Dst:      check_dst,
+		Dst: w.GetCheckDestDestination(),
 	}).Marshal()
 	Fatal(req_header_err)
 
-	//	udp_demo()
+	//	_pl := []byte(`yyyyadsa8ys97da`)
+	fmt.Printf(`
+
+
+get_raw_udp_payload: %d bytes:
+
+
+%s
+
+
+
+`,
+		len(pl),
+		pl,
+	)
 
 	binary.BigEndian.PutUint16(req_header[2:], uint16(ipv4.HeaderLen+len(dns_question_packed))) // fix the length endianness on BSDs
 	reqData := append(append(req_header, dns_question_packed...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)

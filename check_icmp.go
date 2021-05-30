@@ -68,7 +68,7 @@ func (w *WireguardClient) WriteICMPPacket() {
 		},
 	}).Marshal(nil)
 	Fatal(ping_err)
-
+	w.SetCheckDestination()
 	pingHeader, ping_header_err := (&ipv4.Header{
 		Version:  ipv4.Version,
 		Len:      ipv4.HeaderLen,
@@ -76,7 +76,7 @@ func (w *WireguardClient) WriteICMPPacket() {
 		Protocol: 1, // ICMP
 		TTL:      int(w.IcmpTTL),
 		Src:      w.ClientAddress,
-		Dst:      w.ServerAddress,
+		Dst:      w.GetCheckDestDestination(),
 	}).Marshal()
 	Fatal(ping_header_err)
 

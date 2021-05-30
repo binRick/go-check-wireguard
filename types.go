@@ -45,6 +45,9 @@ type WireguardClient struct {
 	IcmpSequenceID int
 	IcmpID         int
 
+	CheckDestinationHost net.IP
+	CheckDestinationPort int
+
 	ClientAddress net.IP
 	ServerAddress net.IP
 
