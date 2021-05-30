@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+//type WireguardClient types.WireguardClient
+
 func NewWireguardClient() *WireguardClient {
 	wgc := &WireguardClient{
 		Started: time.Now(),

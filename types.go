@@ -8,6 +8,10 @@ import (
 	"github.com/olorin/nagiosplugin"
 )
 
+var (
+	MYVAR1 = 123
+)
+
 type EncodedKeys struct {
 	ClientPriv string
 	ClientPub  string
