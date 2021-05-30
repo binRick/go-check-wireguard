@@ -8,10 +8,6 @@ import (
 	"github.com/olorin/nagiosplugin"
 )
 
-var (
-	MYVAR1 = 123
-)
-
 type EncodedKeys struct {
 	ClientPriv string
 	ClientPub  string
@@ -34,15 +30,6 @@ type Connection struct {
 type Handshake struct {
 	hs *noise.HandshakeState
 	cs *noise.CipherSuite
-}
-
-func (w *WireguardClient) GetLatestStageResultName() string {
-	qty := len(w.CheckStageResults)
-	if qty < 1 {
-		return `None`
-	}
-	csr := w.CheckStageResults[qty-1]
-	return csr.Name
 }
 
 type WireguardClient struct {
