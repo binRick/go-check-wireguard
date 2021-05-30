@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/flynn/noise"
-	"github.com/k0kubun/pp"
 	"github.com/olorin/nagiosplugin"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/icmp"
@@ -20,16 +19,35 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+type DecodedKeys struct {
+	ClientPriv []byte
+	ClientPub  []byte
+	ServerPub  []byte
+	PreShared  []byte
+}
+
+type Connection struct {
+	conn     net.Conn
+	Duration time.Duration
+}
+
+type Handshake struct {
+	hs *noise.HandshakeState
+	cs *noise.CipherSuite
+}
+
 type WireguardClient struct {
 	Host        string
 	HostAddress net.IP
 	Port        int
 	Proto       string
+	Started     time.Time
+	Ended       time.Time
 
-	ClientPub     string
-	ClientPrivate string
-	ServerPub     string
-	PreShared     string
+	ClientPub  string
+	ClientPriv string
+	ServerPub  string
+	PreShared  string
 
 	IcmpMessage    string
 	IcmpTTL        int
@@ -38,6 +56,18 @@ type WireguardClient struct {
 
 	ClientAddress net.IP
 	ServerAddress net.IP
+
+	DecodedKeys *DecodedKeys
+	Handshake   *Handshake
+
+	Connection         net.Conn
+	ConnectionDuration time.Duration
+	ConnectionStarted  time.Time
+
+	TheirIndex    uint32
+	OurIndex      uint32
+	SendCipher    *noise.CipherState
+	ReceiveCipher *noise.CipherState
 }
 
 type NagiosPluginResult struct {
@@ -113,175 +143,51 @@ func main() {
 	nag.Finish()
 }
 
-func check_wireguard() {
-	hostAddress := ``
-	lookup_records_qty := 0
-	parsed_host := net.ParseIP(*wgHost)
-	lookup_started := time.Now()
-	if parsed_host == nil {
-		a_rec, err := net.LookupHost(*wgHost)
-		if err != nil || len(a_rec) < 1 {
-			log.Fatalf(`lookup err: %s`, err)
-		}
-		hostAddress = a_rec[0]
-		lookup_records_qty = len(a_rec)
-	} else {
-		hostAddress = *wgHost
-	}
-	lookup_dur := time.Since(lookup_started)
+func (w *WireguardClient) Close() {
+	w.Connection.Close()
+}
 
-	wgc := WireguardClient{
-		Host:           *wgHost,
-		HostAddress:    net.ParseIP(hostAddress),
-		Port:           *wgPort,
-		ClientPub:      *clientPub,
-		Proto:          *wgProto,
-		ClientPrivate:  *clientPriv,
-		ServerPub:      *serverPub,
-		PreShared:      *preShared,
-		IcmpMessage:    *icmpMessage,
-		IcmpTTL:        *icmpTTL,
-		IcmpID:         *icmpID,
-		IcmpSequenceID: *icmpSequenceID,
-		ClientAddress:  *wgClientAddress,
-		ServerAddress:  *wgServerAddress,
-	}
-
-	if DEBUG_WGC_OBJECT {
-		pp.Print(wgc)
-	}
-
-	started := time.Now()
-	ourPrivate, client_private_err := base64.StdEncoding.DecodeString(wgc.ClientPrivate)
-	Fatal(client_private_err)
-
-	ourPublic, client_public_err := base64.StdEncoding.DecodeString(wgc.ClientPub)
-	Fatal(client_public_err)
-
-	theirPublic, server_public_err := base64.StdEncoding.DecodeString(wgc.ServerPub)
-	Fatal(server_public_err)
-
-	preshared, preshared_err := base64.StdEncoding.DecodeString(wgc.PreShared)
-	Fatal(preshared_err)
-
-	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashBLAKE2s)
-	hs, hs_err := noise.NewHandshakeState(noise.Config{
-		CipherSuite:           cs,
-		Random:                rand.Reader,
-		Pattern:               noise.HandshakeIK,
-		Initiator:             true,
-		Prologue:              []byte(DEFAULT_WG_PROTOCOL_PROLOG),
-		PresharedKey:          preshared,
-		PresharedKeyPlacement: 2,
-		StaticKeypair:         noise.DHKey{Private: ourPrivate, Public: ourPublic},
-		PeerStatic:            theirPublic,
-	})
-	Fatal(hs_err)
-
-	dial_started := time.Now()
-	conn, err := net.Dial(wgc.Proto, fmt.Sprintf("%s:%d", wgc.HostAddress, wgc.Port))
-	dial_dur := time.Since(dial_started)
+func (w *WireguardClient) Connect() {
+	w.ConnectionStarted = time.Now()
+	conn, err := net.Dial(w.Proto, fmt.Sprintf("%s:%d", w.HostAddress, w.Port))
 	if err != nil {
 		log.Fatalf("error dialing udp socket: %s", err)
 	}
-	defer conn.Close()
+	w.ConnectionDuration = time.Since(w.ConnectionStarted)
+	w.Connection = conn
+}
 
-	// write handshake initiation packet
-	now := time.Now()
-	tai64n := make([]byte, 12)
-	binary.BigEndian.PutUint64(tai64n[:], 4611686018427387914+uint64(now.Unix()))
-	binary.BigEndian.PutUint32(tai64n[8:], uint32(now.Nanosecond()))
-	initiationPacket := make([]byte, 8)
-	initiationPacket[0] = 1                                 // Type: Initiation
-	initiationPacket[1] = 0                                 // Reserved
-	initiationPacket[2] = 0                                 // Reserved
-	initiationPacket[3] = 0                                 // Reserved
-	binary.LittleEndian.PutUint32(initiationPacket[4:], 28) // Sender index: 28 (arbitrary)
-	initiationPacket, _, _, _ = hs.WriteMessage(initiationPacket, tai64n)
-	hasher, _ := blake2s.New256(nil)
-	hasher.Write([]byte("mac1----"))
-	hasher.Write(theirPublic)
-	hasher, _ = blake2s.New128(hasher.Sum(nil))
-	hasher.Write(initiationPacket)
-	initiationPacket = append(initiationPacket, hasher.Sum(nil)[:16]...)
-	initiationPacket = append(initiationPacket, make([]byte, 16)...)
-	if _, err := conn.Write(initiationPacket); err != nil {
-		log.Fatalf("error writing initiation packet: %s", err)
-	}
+func (w *WireguardClient) AddPerfData() {
+	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(w.Started).Milliseconds()))
+	nag.AddPerfDatum("dial_duration", "ms", float64(w.ConnectionDuration.Milliseconds()))
+	//nag.AddPerfDatum("icmp_duration", "ms", float64(icmp_dur.Milliseconds()))
+	//nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
+	//	nag.AddPerfDatum("handshake_duration", "ms", float64(hs_dur.Milliseconds()))
+	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
 
-	// read handshake response packet
-	responsePacket := make([]byte, 92)
-	res_started := time.Now()
-	n, err := conn.Read(responsePacket)
-	hs_dur := time.Since(res_started)
-	if err != nil {
-		log.Fatalf("error reading response packet: %s", err)
-	}
-	if n != len(responsePacket) {
-		log.Fatalf("response packet too short: want %d, got %d", len(responsePacket), n)
-	}
+	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
+	nag.AddPerfDatum("icmp_seq_id", "", float64(w.IcmpSequenceID))
+	nag.AddPerfDatum("icmp_id", "", float64(w.IcmpID))
+	nag.AddPerfDatum("icmp_req_message", "b", float64(len(w.IcmpMessage)))
+	//nag.AddPerfDatum("icmp_echo_res_size", "b", float64(len(string(echo.Data))))
+	//nag.AddPerfDatum("icmp_res_header_size", "b", float64(replyHeaderLen))
 
-	if responsePacket[0] != 2 { // Type: Response
-		log.Fatalf("response packet type wrong: want %d, got %d", 2, responsePacket[0])
-	}
-	if responsePacket[1] != 0 || responsePacket[2] != 0 || responsePacket[3] != 0 {
-		log.Fatalf("response packet has non-zero reserved fields")
-	}
-	theirIndex := binary.LittleEndian.Uint32(responsePacket[4:])
-	ourIndex := binary.LittleEndian.Uint32(responsePacket[8:])
-	if ourIndex != 28 {
-		log.Fatalf("response packet index wrong: want %d, got %d", 28, ourIndex)
-	}
-	payload, sendCipher, receiveCipher, err := hs.ReadMessage(nil, responsePacket[12:60])
-	if err != nil {
-		log.Fatalf("error reading handshake message: %s", err)
-	}
-	if len(payload) > 0 {
-		log.Fatalf("unexpected payload: %x", payload)
-	}
+	nag.AddPerfDatum("wg_port", "", float64(w.Port))
 
-	// write ICMP Echo packet
-	pingMessage, ping_err := (&icmp.Message{
-		Type: ipv4.ICMPTypeEcho,
-		Body: &icmp.Echo{
-			ID:   int(wgc.IcmpID),
-			Seq:  int(wgc.IcmpSequenceID),
-			Data: []byte(wgc.IcmpMessage),
-		},
-	}).Marshal(nil)
-	Fatal(ping_err)
+	//nag.AddPerfDatum("test_icmp_packet", "b", float64(len(pingPacket)))
+	//nag.AddPerfDatum("req_handshake_packet", "b", float64(len(initiationPacket)))
+	//	nag.AddPerfDatum("res_handshake_packet", "b", float64(len(responsePacket)))
 
-	pingHeader, ping_header_err := (&ipv4.Header{
-		Version:  ipv4.Version,
-		Len:      ipv4.HeaderLen,
-		TotalLen: ipv4.HeaderLen + len(pingMessage),
-		Protocol: 1, // ICMP
-		TTL:      int(wgc.IcmpTTL),
-		Src:      wgc.ClientAddress,
-		Dst:      wgc.ServerAddress,
-	}).Marshal()
-	Fatal(ping_header_err)
+	nag.AddPerfDatum("started", "s", float64(w.Started.Unix()))
+	nag.AddPerfDatum("ended", "s", float64(w.Ended.Unix()))
+}
 
-	binary.BigEndian.PutUint16(pingHeader[2:], uint16(ipv4.HeaderLen+len(pingMessage))) // fix the length endianness on BSDs
-	pingData := append(append(pingHeader, pingMessage...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-	binary.BigEndian.PutUint16(pingData[10:], ipChecksum(pingData))
-	pingPacket := make([]byte, 16)
-	pingPacket[0] = 4                                             // Type: Data
-	pingPacket[1] = 0                                             // Reserved
-	pingPacket[2] = 0                                             // Reserved
-	pingPacket[3] = 0                                             // Reserved
-	binary.LittleEndian.PutUint32(pingPacket[4:], theirIndex)     // Their index
-	binary.LittleEndian.PutUint64(pingPacket[8:], 0)              // Nonce
-	pingPacket, _ = sendCipher.Encrypt(pingPacket, nil, pingData) // Payload data
-	if _, err := conn.Write(pingPacket); err != nil {
-		log.Fatalf("error writing ping message: %s", err)
-	}
-
+func (w *WireguardClient) ReadICMPPacket() {
 	// read ICMP Echo Reply packet
 	replyPacket := make([]byte, 80)
-	icmp_started := time.Now()
-	n, err = conn.Read(replyPacket)
-	icmp_dur := time.Since(icmp_started)
+	//icmp_started := time.Now()
+	n, err := w.Connection.Read(replyPacket)
+	//	icmp_dur := time.Since(icmp_started)
 	if err != nil {
 		log.Fatalf("error reading ping reply message: %s", err)
 	}
@@ -292,7 +198,7 @@ func check_wireguard() {
 	if replyPacket[1] != 0 || replyPacket[2] != 0 || replyPacket[3] != 0 {
 		log.Fatalf("reply packet has non-zero reserved fields")
 	}
-	replyPacket, err = receiveCipher.Decrypt(nil, nil, replyPacket[16:])
+	replyPacket, err = w.ReceiveCipher.Decrypt(nil, nil, replyPacket[16:])
 	if err != nil {
 		log.Fatalf("error decrypting reply packet: %s", err)
 	}
@@ -307,35 +213,218 @@ func check_wireguard() {
 		log.Fatalf("unexpected reply body type %T", replyMessage.Body)
 	}
 
-	if echo.ID != wgc.IcmpID || echo.Seq != wgc.IcmpSequenceID || string(echo.Data) != wgc.IcmpMessage {
+	if echo.ID != w.IcmpID || echo.Seq != w.IcmpSequenceID || string(echo.Data) != w.IcmpMessage {
 		log.Fatalf("incorrect echo response: %#v", echo)
 	}
-	ended := time.Now()
 
-	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(started).Milliseconds()))
-	nag.AddPerfDatum("dial_duration", "ms", float64(dial_dur.Milliseconds()))
-	nag.AddPerfDatum("icmp_duration", "ms", float64(icmp_dur.Milliseconds()))
-	nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
-	nag.AddPerfDatum("handshake_duration", "ms", float64(hs_dur.Milliseconds()))
-	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
+	return
+}
+func (w *WireguardClient) WriteICMPPacket() {
+	// write ICMP Echo packet
+	pingMessage, ping_err := (&icmp.Message{
+		Type: ipv4.ICMPTypeEcho,
+		Body: &icmp.Echo{
+			ID:   int(w.IcmpID),
+			Seq:  int(w.IcmpSequenceID),
+			Data: []byte(w.IcmpMessage),
+		},
+	}).Marshal(nil)
+	Fatal(ping_err)
 
-	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
-	nag.AddPerfDatum("icmp_seq_id", "", float64(wgc.IcmpSequenceID))
-	nag.AddPerfDatum("icmp_id", "", float64(wgc.IcmpID))
-	nag.AddPerfDatum("icmp_req_message", "b", float64(len(wgc.IcmpMessage)))
-	nag.AddPerfDatum("icmp_echo_res_size", "b", float64(len(string(echo.Data))))
-	nag.AddPerfDatum("icmp_res_header_size", "b", float64(replyHeaderLen))
+	pingHeader, ping_header_err := (&ipv4.Header{
+		Version:  ipv4.Version,
+		Len:      ipv4.HeaderLen,
+		TotalLen: ipv4.HeaderLen + len(pingMessage),
+		Protocol: 1, // ICMP
+		TTL:      int(w.IcmpTTL),
+		Src:      w.ClientAddress,
+		Dst:      w.ServerAddress,
+	}).Marshal()
+	Fatal(ping_header_err)
 
-	nag.AddPerfDatum("wg_port", "", float64(wgc.Port))
+	binary.BigEndian.PutUint16(pingHeader[2:], uint16(ipv4.HeaderLen+len(pingMessage))) // fix the length endianness on BSDs
+	pingData := append(append(pingHeader, pingMessage...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	binary.BigEndian.PutUint16(pingData[10:], ipChecksum(pingData))
+	pingPacket := make([]byte, 16)
+	pingPacket[0] = 4                                               // Type: Data
+	pingPacket[1] = 0                                               // Reserved
+	pingPacket[2] = 0                                               // Reserved
+	pingPacket[3] = 0                                               // Reserved
+	binary.LittleEndian.PutUint32(pingPacket[4:], w.TheirIndex)     // Their index
+	binary.LittleEndian.PutUint64(pingPacket[8:], 0)                // Nonce
+	pingPacket, _ = w.SendCipher.Encrypt(pingPacket, nil, pingData) // Payload data
+	if _, err := w.Connection.Write(pingPacket); err != nil {
+		log.Fatalf("error writing ping message: %s", err)
+	}
+}
 
-	nag.AddPerfDatum("test_icmp_packet", "b", float64(len(pingPacket)))
-	nag.AddPerfDatum("req_handshake_packet", "b", float64(len(initiationPacket)))
-	nag.AddPerfDatum("res_handshake_packet", "b", float64(len(responsePacket)))
+func NewWireguardClient() *WireguardClient {
+	wgc := &WireguardClient{
+		Started:        time.Now(),
+		Host:           *wgHost,
+		Port:           *wgPort,
+		ClientPub:      *clientPub,
+		Proto:          *wgProto,
+		ClientPriv:     *clientPriv,
+		ServerPub:      *serverPub,
+		PreShared:      *preShared,
+		IcmpMessage:    *icmpMessage,
+		IcmpTTL:        *icmpTTL,
+		IcmpID:         *icmpID,
+		IcmpSequenceID: *icmpSequenceID,
+		ClientAddress:  *wgClientAddress,
+		ServerAddress:  *wgServerAddress,
+	}
+	return wgc
 
-	nag.AddPerfDatum("started", "s", float64(started.Unix()))
-	nag.AddPerfDatum("ended", "s", float64(ended.Unix()))
+}
 
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s at %s://%s:%d in %dms", wgc.Host, wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(started).Milliseconds())
+func (w *WireguardClient) ReadHandshakeResponse() {
+	// read handshake response packet
+	responsePacket := make([]byte, 92)
+	//	res_started := time.Now()
+	n, err := w.Connection.Read(responsePacket)
+	//	hs_dur := time.Since(res_started)
+	if err != nil {
+		log.Fatalf("error reading response packet: %s", err)
+	}
+	if n != len(responsePacket) {
+		log.Fatalf("response packet too short: want %d, got %d", len(responsePacket), n)
+	}
+
+	if responsePacket[0] != 2 { // Type: Response
+		log.Fatalf("response packet type wrong: want %d, got %d", 2, responsePacket[0])
+	}
+	if responsePacket[1] != 0 || responsePacket[2] != 0 || responsePacket[3] != 0 {
+		log.Fatalf("response packet has non-zero reserved fields")
+	}
+	theirIndex := binary.LittleEndian.Uint32(responsePacket[4:])
+	w.TheirIndex = theirIndex
+	ourIndex := binary.LittleEndian.Uint32(responsePacket[8:])
+	w.OurIndex = ourIndex
+	if ourIndex != 28 {
+		log.Fatalf("response packet index wrong: want %d, got %d", 28, ourIndex)
+	}
+	payload, sendCipher, receiveCipher, err := w.Handshake.hs.ReadMessage(nil, responsePacket[12:60])
+	if err != nil {
+		log.Fatalf("error reading handshake message: %s", err)
+	}
+	w.SendCipher = sendCipher
+	w.ReceiveCipher = receiveCipher
+	if len(payload) > 0 {
+		log.Fatalf("unexpected payload: %x", payload)
+	}
+
+	return
+}
+
+func (w *WireguardClient) WriteHandshake() {
+	// write handshake initiation packet
+	now := time.Now()
+	tai64n := make([]byte, 12)
+	binary.BigEndian.PutUint64(tai64n[:], 4611686018427387914+uint64(now.Unix()))
+	binary.BigEndian.PutUint32(tai64n[8:], uint32(now.Nanosecond()))
+	initiationPacket := make([]byte, 8)
+	initiationPacket[0] = 1                                 // Type: Initiation
+	initiationPacket[1] = 0                                 // Reserved
+	initiationPacket[2] = 0                                 // Reserved
+	initiationPacket[3] = 0                                 // Reserved
+	binary.LittleEndian.PutUint32(initiationPacket[4:], 28) // Sender index: 28 (arbitrary)
+	initiationPacket, _, _, _ = w.Handshake.hs.WriteMessage(initiationPacket, tai64n)
+	hasher, _ := blake2s.New256(nil)
+	hasher.Write([]byte("mac1----"))
+	hasher.Write(w.DecodedKeys.ServerPub)
+	hasher, _ = blake2s.New128(hasher.Sum(nil))
+	hasher.Write(initiationPacket)
+	initiationPacket = append(initiationPacket, hasher.Sum(nil)[:16]...)
+	initiationPacket = append(initiationPacket, make([]byte, 16)...)
+	if _, err := w.Connection.Write(initiationPacket); err != nil {
+		log.Fatalf("error writing initiation packet: %s", err)
+	}
+	return
+}
+
+func (w *WireguardClient) PrepareHandshake() {
+	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashBLAKE2s)
+	hs, hs_err := noise.NewHandshakeState(noise.Config{
+		CipherSuite:           cs,
+		Random:                rand.Reader,
+		Pattern:               noise.HandshakeIK,
+		Initiator:             true,
+		Prologue:              []byte(DEFAULT_WG_PROTOCOL_PROLOG),
+		PresharedKey:          w.DecodedKeys.PreShared,
+		PresharedKeyPlacement: 2,
+		StaticKeypair:         noise.DHKey{Private: w.DecodedKeys.ClientPriv, Public: w.DecodedKeys.ClientPub},
+		PeerStatic:            w.DecodedKeys.ServerPub,
+	})
+	Fatal(hs_err)
+
+	w.Handshake = &Handshake{
+		hs: hs,
+		cs: &cs,
+	}
+
+	return
+}
+
+func (w *WireguardClient) ParseHostAddress() {
+	hostAddress := ``
+	parsed_host := net.ParseIP(*wgHost)
+	//lookup_started := time.Now()
+	if parsed_host == nil {
+		a_rec, err := net.LookupHost(*wgHost)
+		if err != nil || len(a_rec) < 1 {
+			log.Fatalf(`lookup err: %s`, err)
+		}
+		hostAddress = a_rec[0]
+		lookup_records_qty = len(a_rec)
+	} else {
+		hostAddress = *wgHost
+	}
+	w.HostAddress = net.ParseIP(hostAddress)
+
+	return
+}
+
+func (w *WireguardClient) DecodeKeys() {
+	decoded_keys := DecodedKeys{}
+	ourPrivate, client_private_err := base64.StdEncoding.DecodeString(w.ClientPriv)
+	Fatal(client_private_err)
+	decoded_keys.ClientPriv = ourPrivate
+
+	ourPublic, client_public_err := base64.StdEncoding.DecodeString(w.ClientPub)
+	Fatal(client_public_err)
+	decoded_keys.ClientPub = ourPublic
+
+	theirPublic, server_public_err := base64.StdEncoding.DecodeString(w.ServerPub)
+	Fatal(server_public_err)
+	decoded_keys.ServerPub = theirPublic
+
+	preshared, preshared_err := base64.StdEncoding.DecodeString(w.PreShared)
+	Fatal(preshared_err)
+	decoded_keys.PreShared = preshared
+	w.DecodedKeys = &decoded_keys
+	return
+}
+
+var lookup_records_qty int
+
+func check_wireguard() {
+	wgc := NewWireguardClient()
+	wgc.ParseHostAddress()
+	wgc.DecodeKeys()
+	wgc.PrepareHandshake()
+	wgc.Connect()
+	defer wgc.Close()
+	wgc.WriteHandshake()
+	wgc.ReadHandshakeResponse()
+	wgc.WriteICMPPacket()
+	wgc.ReadICMPPacket()
+	wgc.Ended = time.Now()
+
+	wgc.AddPerfData()
+
+	ok_msg := fmt.Sprintf("Validated Wireguard Server %s at %s://%s:%d in %dms", wgc.Host, wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(wgc.Started).Milliseconds())
 	nag.AddResult(nagiosplugin.OK, ok_msg)
 	nr := NagiosPluginResult{
 		Status:  nagiosplugin.OK,
