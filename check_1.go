@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
+	"net"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -11,6 +13,7 @@ import (
 
 func (w *WireguardClient) ReadICMPPacket1() {
 	w.ReadIcmpPacketStarted = time.Now()
+	//	time.Sleep(10 * time.Second)
 	replyPacket := make([]byte, 80)
 	n, err := w.Connection.Read(replyPacket)
 	w.ReadIcmpPacketDuration = time.Since(w.ReadIcmpPacketStarted)
@@ -47,6 +50,23 @@ func (w *WireguardClient) ReadICMPPacket1() {
 }
 
 func (w *WireguardClient) WriteICMPPacket1() {
+
+	var icmp_dest net.IP
+	switch *icmpDestination {
+	case `default`:
+		icmp_dest = w.ServerAddress
+	default:
+		icmp_dest = net.ParseIP(*icmpDestination)
+	}
+
+	msg := fmt.Sprintf(`
+
+icmp_dest: %s
+icmpDestination: %s
+
+`, icmp_dest, *icmpDestination)
+	fmt.Println(msg)
+
 	pingMessage, ping_err := (&icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Body: &icmp.Echo{
@@ -64,9 +84,11 @@ func (w *WireguardClient) WriteICMPPacket1() {
 		Protocol: 1, // ICMP
 		TTL:      int(w.IcmpTTL),
 		Src:      w.ClientAddress,
-		Dst:      w.ServerAddress,
+		Dst:      icmp_dest,
 	}).Marshal()
 	Fatal(ping_header_err)
+
+	//	pp.Print(pingHeader)
 
 	binary.BigEndian.PutUint16(pingHeader[2:], uint16(ipv4.HeaderLen+len(pingMessage))) // fix the length endianness on BSDs
 	pingData := append(append(pingHeader, pingMessage...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)

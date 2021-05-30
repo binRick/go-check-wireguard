@@ -53,6 +53,8 @@ func handle_check_mode() {
 	wgc.HandleStageExecution(`ReadHandshakeResponse`, wgc.ReadHandshakeResponse)
 
 	switch *checkMode {
+	case `dns`:
+		wgc.HandleStageExecution(*checkMode, wgc.CheckDns)
 	case `icmp`:
 		wgc.HandleStageExecution(*checkMode, wgc.CheckIcmp)
 	case `1`:

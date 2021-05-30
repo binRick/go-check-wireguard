@@ -49,7 +49,6 @@ func (w *WireguardClient) ReadHandshakeResponse() (bool, interface{}, error) {
 }
 
 func (w *WireguardClient) WriteHandshake() (bool, interface{}, error) {
-	// write handshake initiation packet
 	now := time.Now()
 	tai64n := make([]byte, 12)
 	binary.BigEndian.PutUint64(tai64n[:], 4611686018427387914+uint64(now.Unix()))
