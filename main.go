@@ -19,98 +19,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-func main() {
-	kingpin.HelpFlag.Short('h')
-	kingpin.CommandLine.DefaultEnvars()
-	kingpin.Parse()
-
-	go check_wireguard()
-
-	select {
-	case plugin_result := <-plugin_result_channel:
-		result = &plugin_result
-	case <-time.After(time.Duration(1*(*timeout)) * time.Millisecond):
-		crit_msg := fmt.Sprintf("Timed out after %dms", *timeout)
-		result = &NagiosPluginResult{
-			Status:  nagiosplugin.CRITICAL,
-			Message: crit_msg,
-		}
-	}
-	nag.AddResult(result.Status, result.Message)
-	nag.Finish()
-}
-
-type EncodedKeys struct {
-	ClientPriv string
-	ClientPub  string
-	ServerPub  string
-	PreShared  string
-}
-
-type DecodedKeys struct {
-	ClientPriv []byte
-	ClientPub  []byte
-	ServerPub  []byte
-	PreShared  []byte
-}
-
-type Connection struct {
-	conn     net.Conn
-	Duration time.Duration
-}
-
-type Handshake struct {
-	hs *noise.HandshakeState
-	cs *noise.CipherSuite
-}
-
-type WireguardClient struct {
-	Host        string
-	HostAddress net.IP
-	Port        int
-	Proto       string
-	Started     time.Time
-	Ended       time.Time
-
-	IcmpMessage    string
-	IcmpTTL        int
-	IcmpSequenceID int
-	IcmpID         int
-
-	ClientAddress net.IP
-	ServerAddress net.IP
-
-	EncodedKeys *EncodedKeys
-	DecodedKeys *DecodedKeys
-
-	Handshake *Handshake
-
-	Connection net.Conn
-
-	ConnectionDuration time.Duration
-	ConnectionStarted  time.Time
-
-	DecodeStarted  time.Time
-	DecodeDuration time.Duration
-
-	ReadHandshakeStarted  time.Time
-	ReadHandshakeDuration time.Duration
-
-	ReadIcmpPacketStarted  time.Time
-	ReadIcmpPacketDuration time.Duration
-
-	TheirIndex uint32
-	OurIndex   uint32
-
-	SendCipher    *noise.CipherState
-	ReceiveCipher *noise.CipherState
-}
-
-type NagiosPluginResult struct {
-	Status  nagiosplugin.Status
-	Message string
-}
-
 const (
 	DEFAULT_SERVER_PUB_KEY     = `qRCwZSKInrMAq5sepfCdaCsRJaoLe5jhtzfiw7CjbwM=`
 	DEFAULT_CLIENT_PUB_KEY     = `K5sF9yESrSBsOXPd6TcpKNgqoy1Ik3ZFKl4FolzrRyI=`
@@ -158,48 +66,6 @@ var (
 	result                = &NagiosPluginResult{}
 	lookup_records_qty    int
 )
-
-func (w *WireguardClient) Close() {
-	w.Connection.Close()
-}
-
-func (w *WireguardClient) Connect() {
-	w.ConnectionStarted = time.Now()
-	conn, err := net.Dial(w.Proto, fmt.Sprintf("%s:%d", w.HostAddress, w.Port))
-	if err != nil {
-		log.Fatalf("error dialing udp socket: %s", err)
-	}
-	w.ConnectionDuration = time.Since(w.ConnectionStarted)
-	w.Connection = conn
-}
-
-func (w *WireguardClient) AddPerfData() {
-	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
-
-	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(w.Started).Milliseconds()))
-	nag.AddPerfDatum("read_handshake_duration", "ms", float64(w.ReadHandshakeDuration.Milliseconds()))
-	nag.AddPerfDatum("read_icmp_packet_duration", "ms", float64(w.ReadIcmpPacketDuration.Milliseconds()))
-	nag.AddPerfDatum("decode_duration", "ms", float64(w.DecodeDuration.Milliseconds()))
-	nag.AddPerfDatum("connect_duration", "ms", float64(w.ConnectionDuration.Milliseconds()))
-
-	//nag.AddPerfDatum("lookup_dur", "ms", float64(lookup_dur.Milliseconds()))
-
-	nag.AddPerfDatum("lookup_records", "", float64(lookup_records_qty))
-	nag.AddPerfDatum("icmp_seq_id", "", float64(w.IcmpSequenceID))
-	nag.AddPerfDatum("icmp_id", "", float64(w.IcmpID))
-	nag.AddPerfDatum("icmp_req_message", "b", float64(len(w.IcmpMessage)))
-	//nag.AddPerfDatum("icmp_echo_res_size", "b", float64(len(string(echo.Data))))
-	//nag.AddPerfDatum("icmp_res_header_size", "b", float64(replyHeaderLen))
-
-	nag.AddPerfDatum("wg_port", "", float64(w.Port))
-
-	//nag.AddPerfDatum("test_icmp_packet", "b", float64(len(pingPacket)))
-	//nag.AddPerfDatum("req_handshake_packet", "b", float64(len(initiationPacket)))
-	//	nag.AddPerfDatum("res_handshake_packet", "b", float64(len(responsePacket)))
-
-	nag.AddPerfDatum("started", "s", float64(w.Started.Unix()))
-	nag.AddPerfDatum("ended", "s", float64(w.Ended.Unix()))
-}
 
 func (w *WireguardClient) ReadICMPPacket() {
 	w.ReadIcmpPacketStarted = time.Now()
@@ -481,4 +347,7 @@ func Fatal(e error) {
 	if e != nil {
 		log.Fatal(e)
 	}
+}
+func main() {
+	exec_cli()
 }
