@@ -9,9 +9,10 @@ import (
 var (
 	timeout = kingpin.Flag("timeout", "Timeout (ms)").OverrideDefaultFromEnvar(`CHECK_TIMEOUT`).Default(fmt.Sprintf("%d", DEFAULT_TIMEOUT)).Short('t').Int()
 
-	wgHost  = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_SERVER`).Short('H').String()
-	wgPort  = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').Int()
-	wgProto = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
+	debugMode = kingpin.Flag("enable-debug-mode", "Enable Debug Mode").Default(fmt.Sprintf("%v", false)).OverrideDefaultFromEnvar(`DEBUG_MODE`).Short('d').Bool()
+	wgHost    = kingpin.Flag("host", "Wireguard Server Host").Default(fmt.Sprintf("%s", DEFAULT_WG_HOST)).OverrideDefaultFromEnvar(`WIREGUARD_SERVER`).Short('H').String()
+	wgPort    = kingpin.Flag("port", "Wireguard Server Port").Default(fmt.Sprintf("%d", DEFAULT_WG_PORT)).Short('p').Int()
+	wgProto   = kingpin.Flag("proto", "Wireguard Server Protocol").Default(fmt.Sprintf("%s", DEFAULT_WG_PROTO)).String()
 
 	icmpMessage    = kingpin.Flag("icmp-message", "ICMP Packet Message").Default(fmt.Sprintf("%s", DEFAULT_ICMP_MESSAGE)).String()
 	icmpTTL        = kingpin.Flag("icmp-ttl", "ICMP Packet TTL").Default(fmt.Sprintf("%d", DEFAULT_ICMP_TTL)).Int()
@@ -31,4 +32,18 @@ func parse_args() {
 	kingpin.HelpFlag.Short('h')
 	kingpin.CommandLine.DefaultEnvars()
 	kingpin.Parse()
+}
+
+func debug_mode_enabled() bool {
+	if *debugMode {
+		return true
+	}
+	return false
+}
+
+func get_debug_mode_int() int {
+	if debug_mode_enabled() {
+		return 1
+	}
+	return 0
 }

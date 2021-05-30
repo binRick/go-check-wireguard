@@ -9,6 +9,18 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+func (w *WireguardClient) CheckIcmpOneOneOneOne() {
+	w.WriteICMPPacket1()
+	w.ReadICMPPacket1()
+	return
+}
+
+func (w *WireguardClient) CheckIcmp() {
+	w.WriteICMPPacket()
+	w.ReadICMPPacket()
+	return
+}
+
 func (w *WireguardClient) ReadICMPPacket() {
 	w.ReadIcmpPacketStarted = time.Now()
 	replyPacket := make([]byte, 80)

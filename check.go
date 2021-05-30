@@ -6,41 +6,52 @@ import (
 	"time"
 )
 
-func (w *WireguardClient) CheckIcmpOneOneOneOne() {
-	w.WriteICMPPacket1()
-	w.ReadICMPPacket1()
-	return
-}
+var (
+	wgc *WireguardClient
+)
 
-func (w *WireguardClient) CheckIcmp() {
-	w.WriteICMPPacket()
-	w.ReadICMPPacket()
-	return
+func (w *WireguardClient) HandleStageExecution(name string, fxn func()) {
+	started := time.Now()
+	fxn()
+	dur := time.Since(started)
+	csr := CheckStageResult{
+		Name:     name,
+		Started:  started,
+		Duration: dur,
+		Success:  true,
+		Function: fmt.Sprintf(`%s`, fxn),
+	}
+	w.CheckStageResults = append(w.CheckStageResults, csr)
 }
 
 func handle_check_mode() {
-	wgc := NewWireguardClient()
-	wgc.ParseHostAddress()
-	wgc.DecodeKeys()
-	wgc.PrepareHandshake()
-	wgc.Connect()
+	wgc = NewWireguardClient()
 	defer wgc.Close()
-	wgc.WriteHandshake()
-	wgc.ReadHandshakeResponse()
+	wgc.HandleStageExecution(`ParseHostAddress`, wgc.ParseHostAddress)
+	wgc.HandleStageExecution(`DecodeKeys`, wgc.DecodeKeys)
+	wgc.HandleStageExecution(`PrepareHandshake`, wgc.PrepareHandshake)
+	wgc.HandleStageExecution(`Connect`, wgc.Connect)
+	wgc.HandleStageExecution(`WriteHandshake`, wgc.WriteHandshake)
+	wgc.HandleStageExecution(`ReadHandshakeResponse`, wgc.ReadHandshakeResponse)
 
 	switch *checkMode {
 	case `icmp`:
-		wgc.CheckIcmp()
+		wgc.HandleStageExecution(*checkMode, wgc.CheckIcmp)
 	case `1`:
-		wgc.CheckIcmpOneOneOneOne()
+		wgc.HandleStageExecution(*checkMode, wgc.CheckIcmpOneOneOneOne)
 	default:
 		fmt.Printf("Invalid Mode %s\n", *checkMode)
 		os.Exit(1)
 	}
 
-	wgc.Ended = time.Now()
+	wgc.HandleStageExecution(`PostFunction`, wgc.PostFunction)
 
-	wgc.AddPerfData()
+	res := wgc.GenerateOKNagiosPluginResult()
 
-	plugin_result_channel <- wgc.GenerateOKNagiosPluginResult()
+	wgc.NagiosPluginResult = &res
+	ret := WireguardClientAndNagiosPluginResult{
+		wgc:    wgc,
+		result: wgc.NagiosPluginResult,
+	}
+	plugin_result_channel <- ret
 }

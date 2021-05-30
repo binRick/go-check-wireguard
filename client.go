@@ -25,9 +25,15 @@ func NewWireguardClient() *WireguardClient {
 		IcmpSequenceID: *icmpSequenceID,
 		ClientAddress:  *wgClientAddress,
 		ServerAddress:  *wgServerAddress,
+		DebugMode:      debug_mode_enabled(),
 	}
 	return wgc
 
+}
+
+func (w *WireguardClient) PostFunction() {
+	w.Ended = time.Now()
+	w.AddPerfData()
 }
 
 func (w *WireguardClient) Close() {

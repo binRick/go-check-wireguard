@@ -77,6 +77,21 @@ type WireguardClient struct {
 
 	SendCipher    *noise.CipherState
 	ReceiveCipher *noise.CipherState
+
+	CompletedCheckStages []string
+	CheckStageResults    []CheckStageResult
+
+	NagiosPluginResult *NagiosPluginResult
+	DebugMode          bool
+}
+
+type CheckStageResult struct {
+	Name     string
+	Started  time.Time
+	Duration time.Duration
+
+	Success  bool
+	Function string
 }
 
 type NagiosPluginResult struct {

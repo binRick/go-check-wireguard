@@ -1,5 +1,5 @@
 #!/bin/bash
 
 
-direnv reload .
+#direnv reload .
 go run -v . $@
