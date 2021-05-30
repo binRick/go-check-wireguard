@@ -32,6 +32,15 @@ type Handshake struct {
 	cs *noise.CipherSuite
 }
 
+func (w *WireguardClient) GetLatestStageResultName() string {
+	qty := len(w.CheckStageResults)
+	if qty < 1 {
+		return `None`
+	}
+	csr := w.CheckStageResults[qty-1]
+	return csr.Name
+}
+
 type WireguardClient struct {
 	Host        string
 	HostAddress net.IP
@@ -78,17 +87,30 @@ type WireguardClient struct {
 	SendCipher    *noise.CipherState
 	ReceiveCipher *noise.CipherState
 
-	CompletedCheckStages []string
-	CheckStageResults    []CheckStageResult
+	CompletedCheckStages    []string
+	CheckStageResults       []CheckStageResult
+	FailedCheckStageResults []CheckStageResult
 
 	NagiosPluginResult *NagiosPluginResult
 	DebugMode          bool
+
+	Connected bool
+
+	Errors []error
+}
+
+type WireguardClientAndNagiosPluginResult struct {
+	wgc    *WireguardClient
+	result *NagiosPluginResult
 }
 
 type CheckStageResult struct {
 	Name     string
 	Started  time.Time
 	Duration time.Duration
+
+	Result interface{}
+	Error  error
 
 	Success  bool
 	Function string

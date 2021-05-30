@@ -17,7 +17,7 @@ func HandleDecodeKeyFailure(failed_key_name string, key []byte, err error) {
 	Fatal(msg)
 }
 
-func (w *WireguardClient) DecodeKeys() {
+func (w *WireguardClient) DecodeKeys() (bool, interface{}, error) {
 	w.DecodeStarted = time.Now()
 	decoded_keys := DecodedKeys{}
 	client_private_key, client_private_err := base64.StdEncoding.DecodeString(w.EncodedKeys.ClientPriv)
@@ -39,5 +39,5 @@ func (w *WireguardClient) DecodeKeys() {
 	w.DecodedKeys = &decoded_keys
 
 	w.DecodeDuration = time.Since(w.DecodeStarted)
-	return
+	return true, ``, nil
 }

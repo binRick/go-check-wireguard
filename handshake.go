@@ -10,7 +10,7 @@ import (
 	"golang.org/x/crypto/blake2s"
 )
 
-func (w *WireguardClient) ReadHandshakeResponse() {
+func (w *WireguardClient) ReadHandshakeResponse() (bool, interface{}, error) {
 	w.ReadHandshakeStarted = time.Now()
 	responsePacket := make([]byte, 92)
 	n, err := w.Connection.Read(responsePacket)
@@ -45,10 +45,10 @@ func (w *WireguardClient) ReadHandshakeResponse() {
 		log.Fatalf("unexpected payload: %x", payload)
 	}
 
-	return
+	return true, ``, nil
 }
 
-func (w *WireguardClient) WriteHandshake() {
+func (w *WireguardClient) WriteHandshake() (bool, interface{}, error) {
 	// write handshake initiation packet
 	now := time.Now()
 	tai64n := make([]byte, 12)
@@ -71,10 +71,10 @@ func (w *WireguardClient) WriteHandshake() {
 	if _, err := w.Connection.Write(initiationPacket); err != nil {
 		log.Fatalf("error writing initiation packet: %s", err)
 	}
-	return
+	return true, ``, nil
 }
 
-func (w *WireguardClient) PrepareHandshake() {
+func (w *WireguardClient) PrepareHandshake() (bool, interface{}, error) {
 	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashBLAKE2s)
 	hs, hs_err := noise.NewHandshakeState(noise.Config{
 		CipherSuite:           cs,
@@ -87,12 +87,14 @@ func (w *WireguardClient) PrepareHandshake() {
 		StaticKeypair:         noise.DHKey{Private: w.DecodedKeys.ClientPriv, Public: w.DecodedKeys.ClientPub},
 		PeerStatic:            w.DecodedKeys.ServerPub,
 	})
-	Fatal(hs_err)
+	if hs_err != nil {
+		return false, ``, hs_err
+	}
 
 	w.Handshake = &Handshake{
 		hs: hs,
 		cs: &cs,
 	}
 
-	return
+	return true, ``, hs_err
 }

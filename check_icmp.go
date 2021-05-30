@@ -9,16 +9,16 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-func (w *WireguardClient) CheckIcmpOneOneOneOne() {
+func (w *WireguardClient) CheckIcmpOneOneOneOne() (bool, interface{}, error) {
 	w.WriteICMPPacket1()
 	w.ReadICMPPacket1()
-	return
+	return true, ``, nil
 }
 
-func (w *WireguardClient) CheckIcmp() {
+func (w *WireguardClient) CheckIcmp() (bool, interface{}, error) {
 	w.WriteICMPPacket()
 	w.ReadICMPPacket()
-	return
+	return true, ``, nil
 }
 
 func (w *WireguardClient) ReadICMPPacket() {

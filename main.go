@@ -24,15 +24,10 @@ const (
 	DEBUG_WGC_OBJECT           = false
 )
 
-type WireguardClientAndNagiosPluginResult struct {
-	wgc    *WireguardClient
-	result *NagiosPluginResult
-}
-
 var (
 	nag                   = nagiosplugin.NewCheck()
 	plugin_result_channel = make(chan WireguardClientAndNagiosPluginResult, 1)
-	result                = &WireguardClientAndNagiosPluginResult{}
+	wgcResult             = &WireguardClientAndNagiosPluginResult{}
 	lookup_records_qty    int
 )
 

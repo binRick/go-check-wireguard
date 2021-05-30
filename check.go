@@ -10,18 +10,36 @@ var (
 	wgc *WireguardClient
 )
 
-func (w *WireguardClient) HandleStageExecution(name string, fxn func()) {
+func (w *WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
+	if w.IsFailed() {
+		return
+	}
 	started := time.Now()
-	fxn()
+	success, res, err := fxn()
+	if err != nil {
+		success = false
+	}
 	dur := time.Since(started)
 	csr := CheckStageResult{
 		Name:     name,
 		Started:  started,
 		Duration: dur,
-		Success:  true,
+		Success:  success,
 		Function: fmt.Sprintf(`%s`, fxn),
+		Result:   res,
+		Error:    err,
 	}
-	w.CheckStageResults = append(w.CheckStageResults, csr)
+	if !csr.Success {
+		w.FailedCheckStageResults = append(w.FailedCheckStageResults, csr)
+		if err != nil {
+			w.Errors = append(w.Errors, err)
+		}
+		res := GenerateCriticalNagiosPluginsResult()
+		nag.AddResult(res.result.Status, res.result.Message)
+		nag.Finish()
+	} else {
+		w.CheckStageResults = append(w.CheckStageResults, csr)
+	}
 }
 
 func handle_check_mode() {

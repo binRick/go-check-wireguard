@@ -13,6 +13,7 @@ func (w *WireguardClient) AddPerfData() {
 		return
 	}
 	nag.AddPerfDatum("check_stage_results_qty", "", float64(len(w.CheckStageResults)))
+	nag.AddPerfDatum("errors_qty", "", float64(len(w.Errors)))
 	nag.AddPerfDatum("timeout", "ms", float64(*timeout))
 
 	nag.AddPerfDatum("total_duration", "ms", float64(time.Since(w.Started).Milliseconds()))
@@ -36,7 +37,7 @@ func (w *WireguardClient) AddPerfData() {
 }
 
 func (w *WireguardClient) GenerateOKMessage() string {
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s using mode %s at %s://%s:%d in %dms", w.Host, strings.ToUpper(*checkMode), w.Proto, w.HostAddress, w.Port, time.Since(w.Started).Milliseconds())
+	ok_msg := fmt.Sprintf("Validated Wireguard Server %s using mode %d %s stages at %s://%s:%d in %dms", w.Host, len(w.CheckStageResults), strings.ToUpper(*checkMode), w.Proto, w.HostAddress, w.Port, time.Since(w.Started).Milliseconds())
 	return ok_msg
 }
 
@@ -49,8 +50,39 @@ func (w *WireguardClient) GenerateOKNagiosPluginResult() (result NagiosPluginRes
 
 }
 
+func GenerateCriticalNagiosPluginsResult() *WireguardClientAndNagiosPluginResult {
+	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing stage %s (#%d) %s with %d errors", *wgHost, *wgPort, *timeout,
+		wgc.GetLatestStageResultName(),
+		len(wgc.CheckStageResults),
+		strings.ToUpper(*checkMode),
+		len(wgc.Errors),
+	)
+
+	if len(wgc.Errors) > 0 {
+		crit_msg = fmt.Sprintf(`%s: "%s"`,
+			crit_msg,
+			wgc.ErrorsAsLine(),
+		)
+	}
+
+	res := &NagiosPluginResult{
+		Status:  nagiosplugin.CRITICAL,
+		Message: crit_msg,
+	}
+
+	return &WireguardClientAndNagiosPluginResult{
+		wgc:    wgc,
+		result: res,
+	}
+
+}
 func GenerateTimedoutNagiosPluginsResult() *WireguardClientAndNagiosPluginResult {
-	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing mode %s", *wgHost, *wgPort, *timeout, strings.ToUpper(*checkMode))
+	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing stage %s (#%d) %s with %d errors", *wgHost, *wgPort, *timeout,
+		wgc.GetLatestStageResultName(),
+		len(wgc.CheckStageResults),
+		strings.ToUpper(*checkMode),
+		len(wgc.Errors),
+	)
 	res := &NagiosPluginResult{
 		Status:  nagiosplugin.CRITICAL,
 		Message: crit_msg,

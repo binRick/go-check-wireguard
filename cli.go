@@ -16,12 +16,14 @@ func exec_cli() {
 
 	select {
 	case plugin_result := <-plugin_result_channel:
-		result = &plugin_result
+		wgcResult = &plugin_result
 	case <-time.After(get_exec_timeout()):
-		result = GenerateTimedoutNagiosPluginsResult()
+		wgcResult = GenerateTimedoutNagiosPluginsResult()
 	}
 
-	nag.AddResult(result.result.Status, result.result.Message)
-	//pp.Print(wgc.CheckStageResults)
+	nag.AddResult(wgcResult.result.Status, wgcResult.result.Message)
+
+	//	Debug(`wgc.CheckStageResults`, wgc.CheckStageResults)
+
 	nag.Finish()
 }
