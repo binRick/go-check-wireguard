@@ -1,6 +1,8 @@
 package main
 
 import (
+	cwt "github.com/binrick/go-check-wireguard/types"
+	"github.com/k0kubun/pp"
 	"github.com/olorin/nagiosplugin"
 )
 
@@ -32,5 +34,6 @@ var (
 )
 
 func main() {
+	pp.Print(cwt.MYVAR1)
 	exec_cli()
 }
