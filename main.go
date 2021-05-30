@@ -19,7 +19,7 @@ const (
 	DEFAULT_ICMP_TTL           = 20
 	DEFAULT_ICMP_SEQUENCE_ID   = 438
 	DEFAULT_ICMP_ID            = 921
-	DEFAULT_TIMEOUT            = 50
+	DEFAULT_TIMEOUT            = 1250
 	DEFAULT_WG_PROTOCOL_PROLOG = `WireGuard v1 zx2c4 Jason@zx2c4.com`
 	DEBUG_WGC_OBJECT           = false
 )
