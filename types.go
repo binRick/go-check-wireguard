@@ -64,6 +64,11 @@ type WireguardClient struct {
 	ReadHandshakeStarted  time.Time
 	ReadHandshakeDuration time.Duration
 
+	LookupStarted  time.Time
+	LookupDuration time.Duration
+
+	LookupsQty int
+
 	ReadIcmpPacketStarted  time.Time
 	ReadIcmpPacketDuration time.Duration
 

@@ -2,12 +2,23 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
-
-	"github.com/olorin/nagiosplugin"
 )
 
-func check_wireguard_icmp() {
+func (w *WireguardClient) CheckIcmpOneOneOneOne() {
+	w.WriteICMPPacket1()
+	w.ReadICMPPacket1()
+	return
+}
+
+func (w *WireguardClient) CheckIcmp() {
+	w.WriteICMPPacket()
+	w.ReadICMPPacket()
+	return
+}
+
+func handle_check_mode() {
 	wgc := NewWireguardClient()
 	wgc.ParseHostAddress()
 	wgc.DecodeKeys()
@@ -16,17 +27,20 @@ func check_wireguard_icmp() {
 	defer wgc.Close()
 	wgc.WriteHandshake()
 	wgc.ReadHandshakeResponse()
-	wgc.WriteICMPPacket()
-	wgc.ReadICMPPacket()
+
+	switch *checkMode {
+	case `icmp`:
+		wgc.CheckIcmp()
+	case `1`:
+		wgc.CheckIcmpOneOneOneOne()
+	default:
+		fmt.Printf("Invalid Mode %s\n", *checkMode)
+		os.Exit(1)
+	}
+
 	wgc.Ended = time.Now()
 
 	wgc.AddPerfData()
 
-	ok_msg := fmt.Sprintf("Validated Wireguard Server %s at %s://%s:%d in %dms", wgc.Host, wgc.Proto, wgc.HostAddress, wgc.Port, time.Since(wgc.Started).Milliseconds())
-	nag.AddResult(nagiosplugin.OK, ok_msg)
-	nr := NagiosPluginResult{
-		Status:  nagiosplugin.OK,
-		Message: ok_msg,
-	}
-	plugin_result_channel <- nr
+	plugin_result_channel <- wgc.GenerateOKNagiosPluginResult()
 }
