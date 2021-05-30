@@ -65,17 +65,19 @@ func GenerateCriticalNagiosPluginsResult() *WireguardClientAndNagiosPluginResult
 		)
 	}
 
-	res := &NagiosPluginResult{
+	res := NagiosPluginResult{
 		Status:  nagiosplugin.CRITICAL,
 		Message: crit_msg,
 	}
 
+	wgc.NagiosPluginResult = &res
+
 	return &WireguardClientAndNagiosPluginResult{
-		wgc:    wgc,
-		result: res,
+		wgc: wgc,
 	}
 
 }
+
 func GenerateTimedoutNagiosPluginsResult() *WireguardClientAndNagiosPluginResult {
 	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing stage %s (#%d) %s with %d errors", *wgHost, *wgPort, *timeout,
 		wgc.GetLatestStageResultName(),
@@ -83,14 +85,14 @@ func GenerateTimedoutNagiosPluginsResult() *WireguardClientAndNagiosPluginResult
 		strings.ToUpper(*checkMode),
 		len(wgc.Errors),
 	)
-	res := &NagiosPluginResult{
+	res := NagiosPluginResult{
 		Status:  nagiosplugin.CRITICAL,
 		Message: crit_msg,
 	}
+	wgc.NagiosPluginResult = &res
 
 	ret := WireguardClientAndNagiosPluginResult{
-		wgc:    wgc,
-		result: res,
+		wgc: wgc,
 	}
 	return &ret
 

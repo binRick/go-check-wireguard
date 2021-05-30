@@ -31,10 +31,6 @@ var (
 	lookup_records_qty    int
 )
 
-func init() {
-}
 func main() {
-	if false {
-	}
 	exec_cli()
 }

@@ -57,8 +57,6 @@ func handle_check_mode() {
 		wgc.HandleStageExecution(*checkMode, wgc.CheckDns)
 	case `icmp`:
 		wgc.HandleStageExecution(*checkMode, wgc.CheckIcmp)
-	case `1`:
-		wgc.HandleStageExecution(*checkMode, wgc.CheckIcmpOneOneOneOne)
 	default:
 		fmt.Printf("Invalid Mode %s\n", *checkMode)
 		os.Exit(1)

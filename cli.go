@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -21,9 +22,11 @@ func exec_cli() {
 		wgcResult = GenerateTimedoutNagiosPluginsResult()
 	}
 
-	nag.AddResult(wgcResult.result.Status, wgcResult.result.Message)
+	fmt.Printf("wgcResult.wgc.NagiosPluginResult=%s\n", wgcResult.wgc.NagiosPluginResult)
 
-	//	Debug(`wgc.CheckStageResults`, wgc.CheckStageResults)
+	if wgcResult.wgc.NagiosPluginResult != nil {
+		nag.AddResult(wgcResult.wgc.NagiosPluginResult.Status, wgcResult.wgc.NagiosPluginResult.Message)
+	}
 
 	nag.Finish()
 }
