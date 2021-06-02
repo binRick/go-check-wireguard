@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/binrick/go-check-wireguard/types"
 )
 
 var (
 	wgc *WireguardClient
 )
 
-func (w *WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
+func (w *types.WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
 	if w.IsFailed() {
 		return
 	}
