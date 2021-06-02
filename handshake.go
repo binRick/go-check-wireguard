@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/binrick/go-check-wireguard/types"
 	"github.com/flynn/noise"
 	"golang.org/x/crypto/blake2s"
 )
@@ -35,7 +36,7 @@ func (w *WireguardClient) ReadHandshakeResponse() (bool, interface{}, error) {
 	if ourIndex != 28 {
 		log.Fatalf("response packet index wrong: want %d, got %d", 28, ourIndex)
 	}
-	payload, sendCipher, receiveCipher, err := w.Handshake.hs.ReadMessage(nil, responsePacket[12:60])
+	payload, sendCipher, receiveCipher, err := w.Handshake.Hs.ReadMessage(nil, responsePacket[12:60])
 	if err != nil {
 		log.Fatalf("error reading handshake message: %s", err)
 	}
@@ -59,7 +60,7 @@ func (w *WireguardClient) WriteHandshake() (bool, interface{}, error) {
 	initiationPacket[2] = 0                                 // Reserved
 	initiationPacket[3] = 0                                 // Reserved
 	binary.LittleEndian.PutUint32(initiationPacket[4:], 28) // Sender index: 28 (arbitrary)
-	initiationPacket, _, _, _ = w.Handshake.hs.WriteMessage(initiationPacket, tai64n)
+	initiationPacket, _, _, _ = w.Handshake.Hs.WriteMessage(initiationPacket, tai64n)
 	hasher, _ := blake2s.New256(nil)
 	hasher.Write([]byte("mac1----"))
 	hasher.Write(w.DecodedKeys.ServerPub)
@@ -90,9 +91,9 @@ func (w *WireguardClient) PrepareHandshake() (bool, interface{}, error) {
 		return false, ``, hs_err
 	}
 
-	w.Handshake = &Handshake{
-		hs: hs,
-		cs: &cs,
+	w.Handshake = &types.Handshake{
+		Hs: hs,
+		Cs: &cs,
 	}
 
 	return true, ``, hs_err

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/binrick/go-check-wireguard/types"
 )
 
 func HandleDecodeKeyFailure(failed_key_name string, key []byte, err error) {
@@ -19,7 +21,7 @@ func HandleDecodeKeyFailure(failed_key_name string, key []byte, err error) {
 
 func (w *WireguardClient) DecodeKeys() (bool, interface{}, error) {
 	w.DecodeStarted = time.Now()
-	decoded_keys := DecodedKeys{}
+	decoded_keys := types.DecodedKeys{}
 	client_private_key, client_private_err := base64.StdEncoding.DecodeString(w.EncodedKeys.ClientPriv)
 	HandleDecodeKeyFailure(`Client Private Key`, client_private_key, client_private_err)
 	decoded_keys.ClientPriv = client_private_key

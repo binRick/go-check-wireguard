@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"time"
+
+	"github.com/binrick/go-check-wireguard/types"
 )
 
 func (w *WireguardClient) SetCheckDestination() {
@@ -52,7 +54,7 @@ func NewWireguardClient() *WireguardClient {
 		Started: time.Now(),
 		Host:    *wgHost,
 		Port:    *wgPort,
-		EncodedKeys: &EncodedKeys{
+		EncodedKeys: &types.EncodedKeys{
 			ClientPriv: *clientPriv,
 			ServerPub:  *serverPub,
 			PreShared:  *preShared,

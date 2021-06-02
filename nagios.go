@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/binrick/go-check-wireguard/types"
 	"github.com/olorin/nagiosplugin"
 )
 
@@ -47,14 +48,16 @@ func (w *WireguardClient) GenerateOKMessage() string {
 	return ok_msg
 }
 
-func (w *WireguardClient) GenerateOKNagiosPluginResult() (result NagiosPluginResult) {
-	result = NagiosPluginResult{
+func (w *WireguardClient) GenerateOKNagiosPluginResult() (result types.NagiosPluginResult) {
+	result = types.NagiosPluginResult{
 		Status:  nagiosplugin.OK,
 		Message: w.GenerateOKMessage(),
 	}
 	return
 
 }
+
+//type WireguardClientAndNagiosPluginResult types.WireguardClientAndNagiosPluginResult
 
 func GenerateCriticalNagiosPluginsResult() *WireguardClientAndNagiosPluginResult {
 	crit_msg := fmt.Sprintf("Wireguard Server %s:%d Timed out after %dms while executing stage %s (#%d) %s with %d errors", *wgHost, *wgPort, *timeout,
@@ -71,7 +74,7 @@ func GenerateCriticalNagiosPluginsResult() *WireguardClientAndNagiosPluginResult
 		)
 	}
 
-	res := NagiosPluginResult{
+	res := types.NagiosPluginResult{
 		Status:  nagiosplugin.CRITICAL,
 		Message: crit_msg,
 	}
@@ -79,7 +82,7 @@ func GenerateCriticalNagiosPluginsResult() *WireguardClientAndNagiosPluginResult
 	wgc.NagiosPluginResult = &res
 
 	return &WireguardClientAndNagiosPluginResult{
-		wgc: wgc,
+		Wgc: wgc,
 	}
 
 }
@@ -91,14 +94,14 @@ func GenerateTimedoutNagiosPluginsResult() *WireguardClientAndNagiosPluginResult
 		strings.ToUpper(*checkMode),
 		len(wgc.Errors),
 	)
-	res := NagiosPluginResult{
+	res := types.NagiosPluginResult{
 		Status:  nagiosplugin.CRITICAL,
 		Message: crit_msg,
 	}
 	wgc.NagiosPluginResult = &res
 
 	ret := WireguardClientAndNagiosPluginResult{
-		wgc: wgc,
+		Wgc: wgc,
 	}
 	return &ret
 

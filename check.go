@@ -12,17 +12,17 @@ var (
 	wgc *WireguardClient
 )
 
-func (w *types.WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
-	if w.IsFailed() {
-		return
-	}
+func (w *WireguardClient) HandleStageExecution(name string, fxn func() (bool, interface{}, error)) {
+	//	if w.IsFailed() {
+	//		return
+	//	}
 	started := time.Now()
 	success, res, err := fxn()
 	if err != nil {
 		success = false
 	}
 	dur := time.Since(started)
-	csr := CheckStageResult{
+	csr := types.CheckStageResult{
 		Name:     name,
 		Started:  started,
 		Duration: dur,
@@ -37,12 +37,15 @@ func (w *types.WireguardClient) HandleStageExecution(name string, fxn func() (bo
 			w.Errors = append(w.Errors, err)
 		}
 		res := GenerateCriticalNagiosPluginsResult()
-		nag.AddResult(res.result.Status, res.result.Message)
+		nag.AddResult(res.Result.Status, res.Result.Message)
 		nag.Finish()
 	} else {
 		w.CheckStageResults = append(w.CheckStageResults, csr)
 	}
 }
+
+//type WireguardClientAndNagiosPluginResult types.WireguardClientAndNagiosPluginResult
+//type WireguardClient types.WireguardClient
 
 func handle_check_mode() {
 	wgc = NewWireguardClient()
@@ -70,7 +73,7 @@ func handle_check_mode() {
 
 	wgc.NagiosPluginResult = &res
 	ret := WireguardClientAndNagiosPluginResult{
-		wgc: wgc,
+		Wgc: wgc,
 	}
 	plugin_result_channel <- ret
 }

@@ -4,3 +4,4 @@
 .attic/
 .bin/
 bin/dns_proxy_server
+bin

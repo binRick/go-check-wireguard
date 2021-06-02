@@ -23,11 +23,11 @@ func exec_cli() {
 	}
 
 	if false {
-		fmt.Printf("wgcResult.wgc.NagiosPluginResult=%s\n", wgcResult.wgc.NagiosPluginResult)
+		fmt.Printf("wgcResult.Wgc.NagiosPluginResult=%s\n", wgcResult.Wgc.NagiosPluginResult)
 	}
 
-	if wgcResult.wgc.NagiosPluginResult != nil {
-		nag.AddResult(wgcResult.wgc.NagiosPluginResult.Status, wgcResult.wgc.NagiosPluginResult.Message)
+	if wgcResult.Wgc.NagiosPluginResult != nil {
+		nag.AddResult(wgcResult.Wgc.NagiosPluginResult.Status, wgcResult.Wgc.NagiosPluginResult.Message)
 	}
 
 	nag.Finish()
